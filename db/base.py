@@ -1,0 +1,1 @@
+# Base model for all database models
