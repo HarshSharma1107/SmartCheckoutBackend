@@ -16,7 +16,6 @@ async def scan_barcode(barcode: str, store_id: Optional[str] = None, db: AsyncSe
     if not barcode:
         raise HTTPException(status_code=400, detail="Barcode cannot be empty")
 
-    # Look up barcode
     stmt = select(ProductBarcode).where(ProductBarcode.barcode_value == barcode, ProductBarcode.is_active == True)
     result = await db.execute(stmt)
     bc = result.scalar_one_or_none()
@@ -24,7 +23,6 @@ async def scan_barcode(barcode: str, store_id: Optional[str] = None, db: AsyncSe
     if not bc:
         return BarcodeScannedResponse(found=False, barcode=barcode, error="Product not found. Barcode not in catalogue.")
 
-    # Get product
     stmt = select(Product).where(Product.product_id == bc.product_id)
     result = await db.execute(stmt)
     product = result.scalar_one_or_none()
@@ -32,7 +30,6 @@ async def scan_barcode(barcode: str, store_id: Optional[str] = None, db: AsyncSe
     if not product or not product.is_active or product.is_discontinued:
         return BarcodeScannedResponse(found=False, barcode=barcode, error="Product is discontinued or inactive.")
 
-    # Get inventory – use .first() to avoid MultipleResultsFound
     inv_stmt = select(Inventory).where(Inventory.product_id == product.product_id)
     if store_id:
         try:
@@ -41,11 +38,10 @@ async def scan_barcode(barcode: str, store_id: Optional[str] = None, db: AsyncSe
         except ValueError:
             pass
     inv_result = await db.execute(inv_stmt)
-    inventory = inv_result.scalars().first()   # ✅ FIX: take first if multiple
+    inventory = inv_result.scalars().first()
 
     qty_available = inventory.qty_available if inventory else 0
 
-    # Get category name
     cat_result = await db.execute(select(Category).where(Category.category_id == product.category_id))
     cat = cat_result.scalar_one_or_none()
     tax_rate = float(product.cgst_rate) + float(product.sgst_rate)

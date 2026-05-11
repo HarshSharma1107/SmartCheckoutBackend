@@ -1,14 +1,50 @@
-from datetime import datetime
+from datetime import datetime,timezone
 import uuid
 from typing import Optional, List
 from decimal import Decimal
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Integer, Numeric, Boolean, Text, ForeignKey
+from sqlalchemy import String, Integer, Numeric, Boolean, Text, ForeignKey,Enum
 from .database import Base
 
-# All tables will be created inside the 'ekart_prod' schema
 SCHEMA_NAME = "ekart_prod"
+
+
+order_status_enum = Enum(
+    "PENDING",
+    "AWAITING_PAYMENT",
+    "COMPLETED",
+    "FAILED",
+    "CANCELLED",
+    "REFUND_PENDING",
+    "REFUNDED",
+    name="order_status_enum",
+    schema=SCHEMA_NAME,
+    create_type=False
+)
+
+
+order_payment_status_enum = Enum(
+    "PENDING",
+    "PAID",
+    "FAILED",
+    "PARTIALLY_REFUNDED",
+    "REFUNDED",
+    name="payment_status_enum",
+    schema=SCHEMA_NAME,
+    create_type=False
+)
+
+payment_method_enum = Enum(
+    "CASH",
+    "UPI",
+    "CARD",
+    "WALLET",
+    "BNPL",
+    name="payment_method_enum",
+    schema=SCHEMA_NAME,
+    create_type=False
+)
 
 class Category(Base):
     __tablename__ = "categories"
@@ -99,20 +135,25 @@ class Order(Base):
 
     order_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     order_number: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    customer_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    customer_phone: Mapped[str] = mapped_column(String(20), nullable=False)
+    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(PG_UUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.customers.customer_id"), nullable=True)
     store_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.stores.store_id"), nullable=False)
-    status: Mapped[str] = mapped_column(String(30), default="PENDING")
+    status: Mapped[str] = mapped_column(order_status_enum, default="PENDING")
     subtotal: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
     discount_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
     cgst_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
     sgst_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+    round_off: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
     grand_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
-    payment_method: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
-    payment_status: Mapped[str] = mapped_column(String(30), default="PENDING")
+    payment_method: Mapped[Optional[str]] = mapped_column(payment_method_enum, nullable=True)
+    payment_status: Mapped[str] = mapped_column(order_payment_status_enum, default="PENDING")
+    payment_ref: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    cashier_id: Mapped[Optional[uuid.UUID]] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    terminal_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     ordered_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     completed_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    customer: Mapped[Optional["customers"]] = relationship("customers")
     items: Mapped[List["OrderItem"]] = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
 
 
@@ -136,3 +177,19 @@ class OrderItem(Base):
 
     order: Mapped["Order"] = relationship("Order", back_populates="items")
     product: Mapped["Product"] = relationship("Product")
+
+class customers(Base):
+    __tablename__ = "customers"
+    __table_args__ = {"schema": SCHEMA_NAME}
+
+    customer_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    phone: Mapped[str] = mapped_column(String(20), nullable=False)
+    email: Mapped[str] = mapped_column(String(200), nullable=False)
+    date_of_birth: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    loyalty_points: Mapped[int] = mapped_column(Integer, default=0)
+    tier: Mapped[str] = mapped_column(String(20), default="STANDARD")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)

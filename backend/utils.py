@@ -12,8 +12,8 @@ def format_order(order: Order) -> OrderResponse:
     return OrderResponse(
         order_id=str(order.order_id),
         order_number=order.order_number,
-        customer_name=order.customer_name,
-        customer_phone=order.customer_phone,
+        customer_name=order.customer.name if order.customer else "",
+        customer_phone=order.customer.phone if order.customer else "",
         status=order.status,
         subtotal=float(order.subtotal),
         discount_total=float(order.discount_total),
