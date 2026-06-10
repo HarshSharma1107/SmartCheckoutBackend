@@ -83,7 +83,7 @@ async def get_product(product_id: str, store_id: Optional[str] = None, db: Async
         except ValueError:
             pass
     inv_result = await db.execute(inv_stmt)
-    inventory = inv_result.scalar_one_or_none()
+    inventory = inv_result.scalars().first()
     qty_available = inventory.qty_available if inventory else 0
 
     cat_result = await db.execute(select(Category).where(Category.category_id == product.category_id))
