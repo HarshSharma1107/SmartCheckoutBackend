@@ -1,7 +1,19 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .database import engine, Base
-from .routers import health, products, orders, stores
+from .routers import (
+    admin_devices,
+    devices,
+    enterprise_customers,
+    enterprise_orders,
+    enterprise_products,
+    health,
+    orders,
+    products,
+    reports,
+    stores,
+    webhooks,
+)
 # from .utils import seed_demo_data
 
 app = FastAPI(
@@ -18,11 +30,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+# Include enterprise routers before legacy routers where paths overlap.
 app.include_router(health.router)
+app.include_router(devices.router)
+app.include_router(admin_devices.router)
+app.include_router(enterprise_products.router)
+app.include_router(enterprise_orders.router)
+app.include_router(enterprise_customers.router)
+app.include_router(reports.router)
+app.include_router(webhooks.router)
 app.include_router(products.router)
 app.include_router(orders.router)
 app.include_router(stores.router)
+
+
+@app.get("/api/v1/ready")
+async def ready():
+    return {"status": "ready", "checks": {"api": "ok"}}
 
 @app.on_event("startup")
 async def startup():

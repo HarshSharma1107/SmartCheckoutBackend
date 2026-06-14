@@ -1,197 +1,217 @@
-# SmartCheckout — Full-Stack Retail System
+# SmartCheckout
 
-Barcode-scanning smart checkout system.  
-**Backend:** FastAPI + PostgreSQL | **Frontend:** React Native (Expo)
+SmartCheckout is a barcode-scanning retail checkout system.
 
----
+- Backend: FastAPI, async SQLAlchemy, PostgreSQL
+- Frontend: React Native with Expo and `expo-camera`
+- Core flow: select customer/store, scan barcode, add products to cart, checkout, show receipt
 
-## Project Structure
+## Repository Structure
 
+```text
+backend/
+  main.py              # FastAPI app setup, CORS, router registration
+  config.py            # Environment configuration
+  database.py          # Async SQLAlchemy engine/session dependency
+  models.py            # PostgreSQL ORM models under ekart_prod schema
+  schemas.py           # Pydantic request/response models
+  utils.py             # Order number and response formatting helpers
+  routers/
+    health.py
+    products.py
+    stores.py
+    orders.py
+frontend/
+  App.js               # React Navigation stack and CartProvider
+  services/
+    api.js             # Backend API client
+    CartContext.js     # Shared cart/customer/store state
+  screens/
+    HomeScreen.js
+    ScannerScreen.js
+    CartScreen.js
+    CheckoutScreen.js
+docs/
+  architecture.md
+  database.md
+  api.md
+  frontend.md
+  backend.md
+  deployment.md
+  security.md
+  testing.md
+  workflows.md
+  integrations.md
+  coding-standards.md
+  troubleshooting.md
+  project-overview.md
 ```
-smartcheckout/
-├── backend/
-│   ├── main.py              # FastAPI app — all routes, models, and DB logic
-│   └── requirements.txt
-└── frontend/
-    ├── App.js               # Root navigation
-    ├── app.json             # Expo config + camera permissions
-    ├── package.json
-    ├── services/
-    │   ├── api.js           # All API calls in one place
-    │   └── CartContext.js   # Global cart state (useReducer)
-    └── screens/
-        ├── HomeScreen.js    # Customer name + phone + store selection
-        ├── ScannerScreen.js # Camera + real-time barcode detection ← CORE
-        ├── CartScreen.js    # Cart view with quantity controls
-        └── CheckoutScreen.js # Payment selection + receipt/payslip
-```
-
----
 
 ## Backend Setup
 
-### 1. Create a PostgreSQL database
+Create a PostgreSQL database and ensure the backend can connect to it.
 
 ```bash
-createdb smartcheckout
-```
-
-### 2. Install dependencies
-
-```bash
-cd backend
 pip install -r requirements.txt
 ```
 
-### 3. Set environment variables
+Set the database URL:
 
 ```bash
-export DATABASE_URL="postgresql+asyncpg://postgres:password@localhost:5432/smartcheckout"
-```
-
-Or create a `.env` file:
-```
 DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/smartcheckout
 ```
 
-### 4. Run the server
+Run the API from the repository root:
 
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-The server auto-creates tables and seeds 8 demo products with real EAN-13 barcodes on first startup.
+Run enterprise migrations:
 
-### 5. Verify
-
+```bash
+alembic upgrade head
 ```
+
+Verify:
+
+```text
 GET http://localhost:8000/health
+GET http://localhost:8000/api/v1/stores
 GET http://localhost:8000/api/v1/products
-GET http://localhost:8000/api/v1/scan/8901030000018
 ```
-
----
 
 ## Frontend Setup
-
-### 1. Install dependencies
 
 ```bash
 cd frontend
 npm install
+npm start
 ```
 
-### 2. Set your backend URL
-
-Edit `services/api.js`:
-```js
-// Replace with your machine's local IP (NOT localhost — the phone needs to reach your machine)
-const BASE_URL = "http://192.168.1.100:8000";
-```
-
-Find your IP:
-- **macOS/Linux:** `ifconfig | grep inet`
-- **Windows:** `ipconfig`
-
-### 3. Run
+Set the backend URL for the app:
 
 ```bash
-npx expo start
+EXPO_PUBLIC_API_URL=http://<your-machine-lan-ip>:8000
 ```
 
-Scan the QR code with **Expo Go** (iOS/Android).
+Use a LAN IP for physical devices. `localhost` usually only works from the same machine.
 
----
+## Production Foundation
 
-## API Reference
+The repo now includes a first-pass Smart eKart production foundation:
 
-### Scan a barcode
-```
-GET /api/v1/scan/{barcode}?store_id={uuid}
-```
-Returns product details + live stock, or `found: false` with an error message.
+- Alembic migration scaffold in `migrations/`
+- Enterprise device/admin/order/customer/reporting/webhook routers under `backend/routers/`
+- Celery app and invoice/WhatsApp task scaffolds under `backend/tasks/`
+- GST invoice template in `backend/templates/invoice.html`
+- MQTT/offline cache/Zustand kiosk scaffolds under `frontend/services/`
+- Local infrastructure in `docker-compose.yml`
 
-### Get product by ID
-```
-GET /api/v1/products/{product_id}
+Start local infrastructure:
+
+```bash
+docker compose up --build
 ```
 
-### Create order (checkout)
-```
-POST /api/v1/orders
-{
-  "customer_name": "Rahul Sharma",
-  "customer_phone": "9876543210",
-  "store_id": "...",
-  "payment_method": "UPI",
-  "items": [
-    { "product_id": "...", "quantity": 2 }
-  ]
-}
-```
-Returns full order with calculated GST, totals, and receipt data.
+To run backend and Expo frontend together for phone testing:
 
-### List stores
+```bash
+copy .env.example .env
 ```
+
+Edit `.env` and set `LAN_IP` to your laptop IP on the same Wi-Fi as your phone.
+
+```bash
+docker compose up --build api frontend
+```
+
+Open Expo Go on your phone and scan the QR code printed by the `frontend` container logs. The app will call:
+
+```text
+http://<LAN_IP>:8000
+```
+
+Do not use `api:8000` or `localhost:8000` inside the phone app; those only work inside Docker or on the laptop itself.
+
+To lock a cart/kiosk to one store, set this in `frontend/.env`:
+
+```env
+EXPO_PUBLIC_LOCKED_STORE_ID=<store_uuid>
+```
+
+Get the value from:
+
+```text
 GET /api/v1/stores
 ```
 
----
+When this is set, the app auto-selects that store and hides the store picker from customers.
 
-## Demo Barcodes (pre-seeded)
+## Raspberry Pi Provisioning Summary
 
-Scan these in the app (or test via API):
+1. Flash Raspberry Pi OS and install the kiosk app/agent.
+2. First boot generates a device fingerprint and CSR.
+3. Agent calls `POST /api/v1/devices/register`.
+4. Admin assigns device to a terminal through `POST /api/v1/admin/devices/{device_id}/assign`.
+5. Cart activates with `POST /api/v1/devices/activate`.
+6. Runtime calls use device bearer token now; production must add mTLS plus signed JWT validation.
 
-| Barcode          | Product              | MRP     |
-|------------------|----------------------|---------|
-| `8901030000018`  | Surf Excel 1kg       | ₹135.00 |
-| `8901764000018`  | Amul Milk 500ml      | ₹32.00  |
-| `8904004100017`  | Parle-G 800g         | ₹55.00  |
-| `6294003592560`  | Dettol 500ml         | ₹175.00 |
-| `8901725000018`  | Tata Salt 1kg        | ₹28.00  |
-| `8901058001112`  | Maggi 70g            | ₹14.00  |
-| `8906001500018`  | Fortune Oil 1L       | ₹145.00 |
-| `8901314102010`  | Colgate 200g         | ₹115.00 |
+## Environment Variables
 
-You can also print these barcodes and scan them physically with the camera.
+Backend:
 
----
+- `DATABASE_URL`
+- `CELERY_BROKER_URL`
+- `CELERY_RESULT_BACKEND`
+- `MQTT_BROKER_URL`
+- `S3_BUCKET_INVOICES`
+- `WHATSAPP_GRAPH_VERSION`
 
-## Key Design Decisions
+Frontend:
 
-### Scanner (ScannerScreen.js)
+- `EXPO_PUBLIC_API_URL`
 
-- Uses `expo-camera` `CameraView` with `onBarcodeScanned` callback
-- **Debounce:** 1500ms cooldown per barcode to prevent duplicate API calls
-- **State guard:** API call blocked if already in `loading` or `result` state
-- **Viewfinder overlay:** CSS mask approach — four transparent rectangles create the scan-area cutout
-- **Corner brackets + laser line:** animated with `Animated.loop` for visual feedback
-- **Flash toggle:** `enableTorch` prop on `CameraView`
-- **Scan types:** EAN-13, EAN-8, UPC-A, UPC-E, Code128, Code39, QR
+## API Summary
 
-### Cart (CartContext.js)
+- `GET /health`
+- `GET /api/v1/stores`
+- `GET /api/v1/products`
+- `GET /api/v1/products/{product_id}?store_id={uuid}`
+- `GET /api/v1/scan/{barcode}?store_id={uuid}`
+- `POST /api/v1/orders`
+- `GET /api/v1/orders/{order_id}`
 
-- `useReducer` with pure reducer — no Zustand/Redux needed at this scale
-- `qty_available` cap enforced on increment
-- Derived values (`subtotal`, `taxTotal`, `grandTotal`) computed on every render — no stale state
-- `orderPayload` convenience getter builds the exact POST body
+See `docs/api.md` for request and response contracts.
+See `docs/production-implementation.md` for the production foundation status.
 
-### Backend (main.py)
+## Business Rules
 
-- Single-file FastAPI for simplicity; split into routers for production
-- **Async SQLAlchemy** throughout — no blocking DB calls
-- **Auto-seed** on startup if DB is empty — zero manual setup
-- **Decimal arithmetic** everywhere — no float rounding bugs on GST
-- **Stock validation** before order creation — returns 409 if insufficient
+- Products must be active and not discontinued to scan successfully.
+- Available inventory is `qty_on_hand - qty_reserved`, floored at zero.
+- Cart quantities are capped by scanned product availability.
+- Checkout validates store, products, item quantities, and stock.
+- Orders are currently marked `COMPLETED` and `PAID` immediately.
+- Payment methods are labels only; no payment gateway is integrated yet.
 
----
+## Project Knowledge
 
-## Production Hardening (next steps)
+This repo uses a documentation-first project memory system. Start with:
 
-- [ ] Add Redis for barcode/inventory caching (`GET /scan` goes Redis-first)
-- [ ] Add `inventory_transactions` ledger writes on every order
-- [ ] JWT auth on all endpoints (cashier login)
-- [ ] Kafka event on `order.completed` → loyalty points, analytics
-- [ ] Replace mock payment with Razorpay SDK integration
-- [ ] Add product images (S3 + CDN)
-- [ ] Offline mode: SQLite cache on device, sync on reconnect
+1. `CLAUDE.md`
+2. `docs/project-overview.md`
+3. `docs/architecture.md`
+4. `docs/database.md`
+5. `docs/api.md`
+6. `docs/security.md`
+
+Update the relevant docs whenever architecture, business rules, API contracts, database design, workflows, or deployment behavior changes.
+
+## Current Gaps
+
+- No automated tests are present.
+- No database migration tool is configured.
+- No authentication or authorization is implemented.
+- CORS is currently permissive.
+- Payment is simulated.
+- Inventory ledger/audit tables are not implemented.

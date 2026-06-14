@@ -1,0 +1,97 @@
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: smartcheckout
+      POSTGRES_USER: smartcheckout
+      POSTGRES_PASSWORD: smartcheckout
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+      - "8883:8883"
+    volumes:
+      - ./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/api/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://smartcheckout:smartcheckout@postgres:5432/smartcheckout}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+      - mosquitto
+
+  frontend:
+    build:
+      context: .
+      dockerfile: infra/frontend/Dockerfile
+    environment:
+      EXPO_PUBLIC_API_URL: http://${LAN_IP:-localhost}:8000
+      REACT_NATIVE_PACKAGER_HOSTNAME: ${LAN_IP:-localhost}
+      EXPO_NO_TELEMETRY: "1"
+    ports:
+      - "8081:8081"
+      - "19000:19000"
+      - "19001:19001"
+      - "19002:19002"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    command: npx expo start --host lan --port 8081
+    depends_on:
+      - api
+
+  celery-worker:
+    build:
+      context: .
+      dockerfile: infra/api/Dockerfile
+    command: celery -A backend.celery_app.celery_app worker --loglevel=INFO
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://smartcheckout:smartcheckout@postgres:5432/smartcheckout}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    depends_on:
+      - api
+      - redis
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: infra/api/Dockerfile
+    command: celery -A backend.celery_app.celery_app beat --loglevel=INFO
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://smartcheckout:smartcheckout@postgres:5432/smartcheckout}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    depends_on:
+      - celery-worker
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+
+volumes:
+  postgres-data:
+  grafana-data:
+  frontend-node-modules:

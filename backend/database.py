@@ -20,4 +20,3 @@ async def get_db():
         except Exception:
             await session.rollback()
             raise
-print(engine)

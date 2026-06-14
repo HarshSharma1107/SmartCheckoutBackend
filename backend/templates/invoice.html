@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Invoice {{ order.order_number }}</title>
+  <style>
+    body { font-family: Arial, sans-serif; color: #111827; margin: 32px; }
+    header { display: flex; justify-content: space-between; border-bottom: 2px solid #111827; padding-bottom: 16px; }
+    h1 { margin: 0; font-size: 24px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 24px; }
+    th, td { border-bottom: 1px solid #d1d5db; padding: 8px; text-align: left; font-size: 12px; }
+    th { background: #f3f4f6; }
+    .totals { margin-top: 24px; margin-left: auto; width: 280px; }
+    .totals div { display: flex; justify-content: space-between; padding: 4px 0; }
+    .grand { font-weight: 700; font-size: 16px; border-top: 1px solid #111827; margin-top: 8px; padding-top: 8px; }
+    .muted { color: #6b7280; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <section>
+      <h1>{{ brand.name }}</h1>
+      <div class="muted">GSTIN: {{ brand.gstin or "N/A" }}</div>
+      <div class="muted">{{ store.name }} {{ store.address_line1 }}</div>
+    </section>
+    <section>
+      <strong>Invoice</strong><br>
+      {{ order.order_number }}<br>
+      <span class="muted">Payment: {{ order.payment_method or "N/A" }}</span>
+    </section>
+  </header>
+
+  <section>
+    <p><strong>Customer:</strong> {{ customer.name or "Guest" }} {{ customer.phone or "" }}</p>
+  </section>
+
+  <table>
+    <thead>
+      <tr>
+        <th>SKU</th>
+        <th>Product</th>
+        <th>Qty</th>
+        <th>MRP</th>
+        <th>Discount</th>
+        <th>Unit Price</th>
+        <th>GST</th>
+        <th>Line Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td>{{ item.sku }}</td>
+        <td>{{ item.name }}</td>
+        <td>{{ item.quantity }}</td>
+        <td>{{ item.mrp }}</td>
+        <td>{{ item.discount_amount }}</td>
+        <td>{{ item.unit_price }}</td>
+        <td>{{ item.cgst_rate + item.sgst_rate }}%</td>
+        <td>{{ item.line_total }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <section class="totals">
+    <div><span>Subtotal</span><span>{{ order.subtotal or "0.00" }}</span></div>
+    <div><span>CGST</span><span>{{ order.cgst_total or "0.00" }}</span></div>
+    <div><span>SGST</span><span>{{ order.sgst_total or "0.00" }}</span></div>
+    <div><span>Round off</span><span>{{ order.round_off or "0.00" }}</span></div>
+    <div class="grand"><span>Total</span><span>{{ order.grand_total }}</span></div>
+  </section>
+
+  <p class="muted">Thank you for shopping with us. This is a computer-generated invoice.</p>
+</body>
+</html>
