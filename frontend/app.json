@@ -21,7 +21,10 @@
         "backgroundColor": "#0A0A0F"
       },
       "package": "com.smartcheckout.app",
-      "permissions": ["android.permission.CAMERA"]
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "plugins": [
       [
@@ -30,6 +33,11 @@
           "cameraPermission": "SmartCheckout needs camera access to scan product barcodes."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "3cf12578-643d-42f0-97d7-8ef341895522"
+      }
+    }
   }
 }
