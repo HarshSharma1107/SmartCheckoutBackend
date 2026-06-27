@@ -1,3 +1,4 @@
+@'
 {
   "expo": {
     "name": "SmartCheckout",
@@ -6,9 +7,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "splash": {
-      "backgroundColor": "#0A0A0F"
-    },
+    "icon": "./assets/images/icon.png",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.smartcheckout.app",
@@ -32,6 +31,14 @@
         {
           "cameraPermission": "SmartCheckout needs camera access to scan product barcodes."
         }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "backgroundColor": "#0A0A0F"
+        }
       ]
     ],
     "extra": {
@@ -41,3 +48,4 @@
     }
   }
 }
+'@ | Set-Content -Path app.json -Encoding utf8
