@@ -3,7 +3,7 @@
 // All backend communication in one place.
 // =============================================================
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.100:8000";
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL || "https://smartcheckoutbackend.onrender.com";
 
 class ApiError extends Error {
   constructor(message, status) {

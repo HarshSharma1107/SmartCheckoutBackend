@@ -41,6 +41,7 @@
       ]
     ],
     "extra": {
+      "apiUrl": "https://smartcheckoutbackend.onrender.com",
       "eas": {
         "projectId": "3cf12578-643d-42f0-97d7-8ef341895522"
       }
