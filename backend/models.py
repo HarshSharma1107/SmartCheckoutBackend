@@ -4,7 +4,7 @@ from typing import Optional, List
 from decimal import Decimal
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Integer, Numeric, Boolean, Text, ForeignKey,Enum
+from sqlalchemy import String, Integer, Numeric, Boolean, Text, ForeignKey, Enum, Index, UniqueConstraint, text
 from .database import Base
 
 SCHEMA_NAME = "ekart_prod"
@@ -97,17 +97,38 @@ class ProductBarcode(Base):
     product: Mapped["Product"] = relationship("Product", back_populates="barcodes")
 
 
-class Store(Base):
-    __tablename__ = "stores"
+class Brand(Base):
+    __tablename__ = "brands"
     __table_args__ = {"schema": SCHEMA_NAME}
 
-    store_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    brand_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    logo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    stores: Mapped[List["Store"]] = relationship("Store", back_populates="brand")
+
+
+class Store(Base):
+    __tablename__ = "stores"
+    __table_args__ = (
+        UniqueConstraint("brand_id", "code", name="uq_stores_brand_code"),
+        {"schema": SCHEMA_NAME},
+    )
+
+    store_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    brand_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.brands.brand_id"), nullable=False)
+    code: Mapped[str] = mapped_column(String(20), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    brand: Mapped["Brand"] = relationship("Brand", back_populates="stores")
     inventory_records: Mapped[List["Inventory"]] = relationship("Inventory", back_populates="store")
+    terminals: Mapped[List["Terminal"]] = relationship("Terminal", back_populates="store")
 
 
 class Inventory(Base):
@@ -193,3 +214,115 @@ class customers(Base):
     deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Terminal(Base):
+    """A logical checkout slot at a store. Devices are assigned to terminals,
+    not the other way around, so replacing a dead phone/Pi never disturbs the
+    terminal's order history — see docs/terminal-provisioning-plan.md."""
+
+    __tablename__ = "terminals"
+    __table_args__ = (
+        UniqueConstraint("store_id", "terminal_code", name="uq_terminals_store_code"),
+        {"schema": SCHEMA_NAME},
+    )
+
+    terminal_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.stores.store_id"), nullable=False)
+    terminal_code: Mapped[str] = mapped_column(String(20), nullable=False)
+    label: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    deactivated_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+    store: Mapped["Store"] = relationship("Store", back_populates="terminals")
+    assignments: Mapped[List["DeviceTerminalAssignment"]] = relationship("DeviceTerminalAssignment", back_populates="terminal")
+
+
+class Device(Base):
+    """A physical phone/tablet/Pi. Identity is `local_install_id`, a UUID the
+    app generates once and persists in secure storage. `device_type` governs
+    which auth path applies (only ANDROID_APP/JWT is implemented today)."""
+
+    __tablename__ = "devices"
+    __table_args__ = (
+        Index("uq_devices_local_install_id", "local_install_id", unique=True,
+              postgresql_where=text("local_install_id IS NOT NULL")),
+        {"schema": SCHEMA_NAME},
+    )
+
+    device_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    local_install_id: Mapped[Optional[uuid.UUID]] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    device_type: Mapped[str] = mapped_column(String(20), default="ANDROID_APP")
+    device_name: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    manufacturer: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    os_version: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    app_version: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    platform: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="UNASSIGNED")
+    pairing_code: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    pairing_code_expires_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    refresh_token_hash: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    refresh_token_expires_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    last_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    assignments: Mapped[List["DeviceTerminalAssignment"]] = relationship("DeviceTerminalAssignment", back_populates="device")
+
+
+class DeviceTerminalAssignment(Base):
+    """Temporal history of which device serves which terminal. A partial
+    unique index enforces at most one *active* (revoked_at IS NULL) row per
+    device and per terminal, without blocking historical rows."""
+
+    __tablename__ = "device_terminal_assignments"
+    __table_args__ = (
+        Index("uq_dta_active_device", "device_id", unique=True,
+              postgresql_where=text("revoked_at IS NULL")),
+        Index("uq_dta_active_terminal", "terminal_id", unique=True,
+              postgresql_where=text("revoked_at IS NULL")),
+        {"schema": SCHEMA_NAME},
+    )
+
+    assignment_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    device_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.devices.device_id"), nullable=False)
+    terminal_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.terminals.terminal_id"), nullable=False)
+    assigned_by: Mapped[Optional[uuid.UUID]] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    assigned_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    revoke_reason: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
+    device: Mapped["Device"] = relationship("Device", back_populates="assignments")
+    terminal: Mapped["Terminal"] = relationship("Terminal", back_populates="assignments")
+
+
+class AdminUser(Base):
+    __tablename__ = "admin_users"
+    __table_args__ = {"schema": SCHEMA_NAME}
+
+    admin_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    full_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    role: Mapped[str] = mapped_column(String(30), default="STORE_ADMIN")
+    brand_id: Mapped[Optional[uuid.UUID]] = mapped_column(PG_UUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.brands.brand_id"), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    __table_args__ = {"schema": SCHEMA_NAME}
+
+    log_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    event_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    entity_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    actor_type: Mapped[str] = mapped_column(String(20), default="system")
+    actor_id: Mapped[Optional[uuid.UUID]] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)

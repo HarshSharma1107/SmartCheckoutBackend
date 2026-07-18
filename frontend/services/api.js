@@ -15,8 +15,8 @@ class ApiError extends Error {
 async function request(path, options = {}) {
   const url = `${BASE_URL}${path}`;
   const config = {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
   };
 
   try {
@@ -24,9 +24,16 @@ async function request(path, options = {}) {
     const data = await res.json();
 
     if (!res.ok) {
-      throw new ApiError(data.detail || "Request failed", res.status);
+      // FastAPI's default error shape is {detail: {code, message}} or
+      // {detail: "string"}; the terminal-provisioning endpoints also use
+      // {success:false, error:{code,message}}. Handle all three so the
+      // thrown message is always readable text, not "[object Object]".
+      const detail = data.detail ?? data.error;
+      const message = typeof detail === "string" ? detail : detail?.message || "Request failed";
+      throw new ApiError(message, res.status);
     }
-    return data;
+    // Terminal-provisioning endpoints wrap payloads as {success, data, error}.
+    return data && typeof data === "object" && "data" in data && "success" in data ? data.data : data;
   } catch (err) {
     if (err instanceof ApiError) throw err;
     throw new ApiError("Network error — check your connection", 0);
@@ -88,4 +95,41 @@ export async function getOrder(orderId) {
 
 export async function healthCheck() {
   return request("/health");
+}
+
+// =============================================================
+// TERMINAL PROVISIONING
+// See docs/terminal-provisioning-plan.md for the full flow.
+// =============================================================
+
+/**
+ * Idempotent by local_install_id - safe to call repeatedly while polling
+ * for admin assignment, and safe to call again after a reinstall.
+ */
+export async function registerDevice(payload) {
+  return request("/api/v1/devices/register", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getDeviceMe(accessToken) {
+  return request("/api/v1/devices/me", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export async function sendHeartbeat(accessToken, appVersion = null) {
+  return request("/api/v1/devices/heartbeat", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ app_version: appVersion }),
+  });
+}
+
+export async function refreshDeviceToken(refreshToken) {
+  return request("/api/v1/devices/refresh", {
+    method: "POST",
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
 }

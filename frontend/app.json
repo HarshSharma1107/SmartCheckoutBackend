@@ -38,7 +38,8 @@
           "imageWidth": 200,
           "backgroundColor": "#0A0A0F"
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "extra": {
       "apiUrl": "https://smartcheckoutbackend.onrender.com",

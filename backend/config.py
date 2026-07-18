@@ -19,3 +19,14 @@ CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:63
 MQTT_BROKER_URL = os.getenv("MQTT_BROKER_URL", "mqtts://localhost:8883")
 S3_BUCKET_INVOICES = os.getenv("S3_BUCKET_INVOICES")
 WHATSAPP_GRAPH_VERSION = os.getenv("WHATSAPP_GRAPH_VERSION", "v19.0")
+
+# JWT auth for device/admin identity. Set a real JWT_SECRET in production —
+# the fallback is only safe for local development.
+JWT_SECRET = os.getenv("JWT_SECRET", "dev-insecure-secret-change-me")
+JWT_ALGORITHM = "HS256"
+DEVICE_ACCESS_TOKEN_TTL_SECONDS = 15 * 60
+DEVICE_REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60
+ADMIN_ACCESS_TOKEN_TTL_SECONDS = 60 * 60
+PAIRING_CODE_TTL_SECONDS = 15 * 60
+DEFAULT_BRAND_CODE = os.getenv("DEFAULT_BRAND_CODE", "DEFAULT")
+DEFAULT_BRAND_NAME = os.getenv("DEFAULT_BRAND_NAME", "Default Brand")

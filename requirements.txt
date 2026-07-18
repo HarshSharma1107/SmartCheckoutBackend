@@ -15,3 +15,5 @@ qrcode==7.4.2
 paho-mqtt==2.1.0
 pytest==8.2.2
 pytest-asyncio==0.23.7
+pyjwt==2.8.0
+bcrypt==4.2.0

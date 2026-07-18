@@ -3,16 +3,13 @@
 // Dark industrial theme. Clean, purposeful retail UX.
 // =============================================================
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   StatusBar, KeyboardAvoidingView, Platform, ScrollView,
-  Animated, ActivityIndicator, Alert,
+  Animated,
 } from "react-native";
 import { useCart } from "../services/CartContext";
-import { listStores, healthCheck } from "../services/api";
-
-const LOCKED_STORE_ID = process.env.EXPO_PUBLIC_LOCKED_STORE_ID;
 
 const COLORS = {
   bg:          "#0A0A0F",
@@ -29,13 +26,12 @@ const COLORS = {
 };
 
 export default function HomeScreen({ navigation }) {
-  const { setCustomer, setStore, customer, items } = useCart();
+  // storeId is set by TerminalStoreSync (App.js) once the device's
+  // provisioning assignment resolves - customers never pick a store here.
+  const { setCustomer, customer, items } = useCart();
 
   const [name,    setName]    = useState(customer?.name  || "");
   const [phone,   setPhone]   = useState(customer?.phone || "");
-  const [stores,  setStores]  = useState([]);
-  const [storeId, setStoreId] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [errors,  setErrors]  = useState({});
 
   const fadeAnim  = useRef(new Animated.Value(0)).current;
@@ -46,37 +42,13 @@ export default function HomeScreen({ navigation }) {
       Animated.timing(fadeAnim,  { toValue: 1, duration: 500, useNativeDriver: true }),
       Animated.timing(slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
     ]).start();
-
-    loadStores();
   }, []);
-
-  async function loadStores() {
-    try {
-      await healthCheck();
-      const data = await listStores();
-      setStores(data);
-      const lockedStore = LOCKED_STORE_ID
-        ? data.find((s) => s.store_id === LOCKED_STORE_ID)
-        : null;
-      if (lockedStore) {
-        setStoreId(lockedStore.store_id);
-        setStore(lockedStore.store_id);
-      } else if (data.length > 0) {
-        setStoreId(data[0].store_id);
-      }
-    } catch {
-      Alert.alert("Connection Error", "Cannot reach the server. Check your API_URL in api.js.");
-    } finally {
-      setLoading(false);
-    }
-  }
 
   function validate() {
     const errs = {};
     if (!name.trim())                              errs.name  = "Name is required";
     if (!phone.trim())                             errs.phone = "Phone is required";
     else if (phone.replace(/\D/g, "").length < 10) errs.phone = "Enter a valid 10-digit number";
-    if (!storeId)                                  errs.store = "Select a store to continue";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -84,17 +56,7 @@ export default function HomeScreen({ navigation }) {
   function handleStart() {
     if (!validate()) return;
     setCustomer({ name: name.trim(), phone: phone.trim() });
-    setStore(storeId);
     navigation.navigate("Scanner");
-  }
-
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.accent} />
-        <Text style={styles.loadingText}>Connecting to store…</Text>
-      </View>
-    );
   }
 
   return (
@@ -152,32 +114,6 @@ export default function HomeScreen({ navigation }) {
               />
               {errors.phone && <Text style={styles.errorText}>{errors.phone}</Text>}
             </View>
-
-            {!LOCKED_STORE_ID && (
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>Store</Text>
-                <View style={styles.storeGrid}>
-                  {stores.map((s) => (
-                    <TouchableOpacity
-                      key={s.store_id}
-                      style={[styles.storeChip, storeId === s.store_id && styles.storeChipActive]}
-                      onPress={() => { setStoreId(s.store_id); setErrors((e) => ({ ...e, store: null })); }}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.storeChipText, storeId === s.store_id && styles.storeChipTextActive]}>
-                        {s.name}
-                      </Text>
-                      {s.city && (
-                        <Text style={[styles.storeChipCity, storeId === s.store_id && styles.storeChipTextActive]}>
-                          {s.city}
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                {errors.store && <Text style={styles.errorText}>{errors.store}</Text>}
-              </View>
-            )}
           </Animated.View>
 
           {/* Cart summary (if returning) */}
