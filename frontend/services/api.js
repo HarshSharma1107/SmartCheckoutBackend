@@ -19,25 +19,40 @@ async function request(path, options = {}) {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
   };
 
+  let res;
   try {
-    const res = await fetch(url, config);
-    const data = await res.json();
-
-    if (!res.ok) {
-      // FastAPI's default error shape is {detail: {code, message}} or
-      // {detail: "string"}; the terminal-provisioning endpoints also use
-      // {success:false, error:{code,message}}. Handle all three so the
-      // thrown message is always readable text, not "[object Object]".
-      const detail = data.detail ?? data.error;
-      const message = typeof detail === "string" ? detail : detail?.message || "Request failed";
-      throw new ApiError(message, res.status);
-    }
-    // Terminal-provisioning endpoints wrap payloads as {success, data, error}.
-    return data && typeof data === "object" && "data" in data && "success" in data ? data.data : data;
+    res = await fetch(url, config);
   } catch (err) {
-    if (err instanceof ApiError) throw err;
+    console.error(`[api] ${config.method || "GET"} ${url} - fetch failed:`, err.message);
     throw new ApiError("Network error — check your connection", 0);
   }
+
+  // Read the body as text first: error responses aren't guaranteed to be
+  // JSON (e.g. a raw 500 from an unhandled backend exception, or a Cloudflare/
+  // Render gateway page during a cold start), and calling res.json() straight
+  // away would throw and get misreported as a network error instead of the
+  // real status.
+  const rawBody = await res.text();
+  let data = null;
+  try {
+    data = rawBody ? JSON.parse(rawBody) : null;
+  } catch {
+    console.error(`[api] ${config.method || "GET"} ${url} - non-JSON response (HTTP ${res.status}):`, rawBody.slice(0, 500));
+    throw new ApiError(`Server error (HTTP ${res.status})`, res.status);
+  }
+
+  if (!res.ok) {
+    // FastAPI's default error shape is {detail: {code, message}} or
+    // {detail: "string"}; the terminal-provisioning endpoints also use
+    // {success:false, error:{code,message}}. Handle all three so the
+    // thrown message is always readable text, not "[object Object]".
+    const detail = data?.detail ?? data?.error;
+    const message = typeof detail === "string" ? detail : detail?.message || `Request failed (HTTP ${res.status})`;
+    console.error(`[api] ${config.method || "GET"} ${url} - HTTP ${res.status}:`, message);
+    throw new ApiError(message, res.status);
+  }
+  // Terminal-provisioning endpoints wrap payloads as {success, data, error}.
+  return data && typeof data === "object" && "data" in data && "success" in data ? data.data : data;
 }
 
 // =============================================================
