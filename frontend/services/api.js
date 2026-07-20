@@ -3,6 +3,8 @@
 // All backend communication in one place.
 // =============================================================
 
+import { getDeviceAccessToken } from "./deviceToken";
+
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL || "https://smartcheckoutbackend.onrender.com";
 
 class ApiError extends Error {
@@ -14,10 +16,20 @@ class ApiError extends Error {
 
 async function request(path, options = {}) {
   const url = `${BASE_URL}${path}`;
-  const config = {
-    ...options,
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-  };
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+
+  // Auto-attach the device bearer token to every request that doesn't
+  // already specify its own Authorization header (e.g. a one-off admin
+  // token). This is the single place it happens - call sites never need
+  // to remember to thread a token through, which is exactly the gap that
+  // caused "Missing device bearer token" on checkout: whichever endpoint
+  // ends up requiring device auth next won't need special-casing here.
+  if (!headers.Authorization) {
+    const deviceToken = await getDeviceAccessToken();
+    if (deviceToken) headers.Authorization = `Bearer ${deviceToken}`;
+  }
+
+  const config = { ...options, headers };
 
   let res;
   try {

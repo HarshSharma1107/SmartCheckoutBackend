@@ -28,14 +28,19 @@ This document tracks the implementation response to the production Smart eKart s
   - `POST /api/v1/admin/devices/{device_id}/revoke`
 - Enterprise product barcode API:
   - `GET /api/v1/products/barcode/{barcode_value}`
-- Enterprise order APIs:
-  - `POST /api/v1/orders`
+- Enterprise order APIs (device-JWT auth; `cart` sub-path is deliberate —
+  it used to collide with the legacy no-auth `POST /api/v1/orders` /
+  `GET /api/v1/orders/{order_id}` in `backend/routers/orders.py` since
+  both routers claimed the identical path+method, which silently routed
+  every consumer-app checkout into the device-gated handler and produced
+  a production "Missing device bearer token" error):
+  - `POST /api/v1/orders/cart`
   - `POST /api/v1/orders/{order_id}/items`
   - `DELETE /api/v1/orders/{order_id}/items/{item_id}`
   - `PATCH /api/v1/orders/{order_id}/items/{item_id}`
   - `POST /api/v1/orders/{order_id}/checkout`
   - `POST /api/v1/orders/{order_id}/payment-confirmation`
-  - `GET /api/v1/orders/{order_id}`
+  - `GET /api/v1/orders/cart/{order_id}`
   - `GET /api/v1/orders/{order_id}/invoice`
   - `POST /api/v1/orders/{order_id}/resend-invoice`
 - Inventory reservation behavior:

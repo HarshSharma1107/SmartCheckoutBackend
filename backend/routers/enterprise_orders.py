@@ -154,13 +154,23 @@ async def _store_idempotency(db: AsyncSession, scope: str, key: str | None, resp
     )
 
 
-@router.post("")
+@router.post("/cart")
 async def create_enterprise_order(
     payload: EnterpriseOrderCreateRequest,
     _: DevicePrincipal = Depends(require_device),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create an ACTIVE cart order after validating terminal, store, and device assignment."""
+    """Create an ACTIVE cart order after validating terminal, store, and device assignment.
+
+    Lives at `/cart` rather than the bare collection path on purpose: the
+    legacy one-shot consumer endpoint (`backend/routers/orders.py`,
+    `POST /api/v1/orders`, no auth) used to be silently shadowed by this
+    route because both routers claimed the exact same path+method and this
+    one was registered first - Starlette dispatches to the first match, so
+    every legacy checkout request was hitting this device-gated handler
+    and failing with "Missing device bearer token". Keep these two create
+    endpoints on distinct paths so that can't happen again.
+    """
     assignment = await db.execute(
         text(
             """
@@ -578,9 +588,14 @@ async def payment_confirmation(
     return ok({"payment_status": "CAPTURED"})
 
 
-@router.get("/{order_id}")
+@router.get("/cart/{order_id}")
 async def get_enterprise_order(order_id: UUID, _: DevicePrincipal = Depends(require_device), db: AsyncSession = Depends(get_db)):
-    """Return full order metadata; nested expansion can be added by the service layer."""
+    """Return full order metadata; nested expansion can be added by the service layer.
+
+    Lives at `/cart/{order_id}` for the same reason `create_enterprise_order`
+    lives at `/cart` - see that docstring. A bare `GET /{order_id}` here
+    would otherwise shadow `orders.py`'s `GET /api/v1/orders/{order_id}`.
+    """
     order = await _load_order_context(db, order_id)
     return ok(dict(order))
 

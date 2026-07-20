@@ -6,6 +6,7 @@
 import React, { useEffect } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { CartProvider, useCart } from "./services/CartContext";
 import { TerminalProvider, useTerminal } from "./services/TerminalContext";
 
@@ -74,11 +75,13 @@ function RootNavigator() {
 
 export default function App() {
   return (
-    <CartProvider>
-      <TerminalProvider>
-        <TerminalStoreSync />
-        <RootNavigator />
-      </TerminalProvider>
-    </CartProvider>
+    <SafeAreaProvider>
+      <CartProvider>
+        <TerminalProvider>
+          <TerminalStoreSync />
+          <RootNavigator />
+        </TerminalProvider>
+      </CartProvider>
+    </SafeAreaProvider>
   );
 }

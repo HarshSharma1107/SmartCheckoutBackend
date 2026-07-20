@@ -227,17 +227,28 @@ Product endpoint:
 
 - `GET /api/v1/products/barcode/{barcode_value}?store_id={uuid}`
 
-Enterprise order endpoints:
+Enterprise order endpoints (device-JWT authenticated - not used by the
+current Expo consumer app, reserved for the kiosk/terminal flow described
+in `docs/enterprise-iot-architecture.md`):
 
-- `POST /api/v1/orders`
+- `POST /api/v1/orders/cart` — create an ACTIVE cart order for a device/terminal
 - `POST /api/v1/orders/{order_id}/items`
 - `DELETE /api/v1/orders/{order_id}/items/{item_id}`
 - `PATCH /api/v1/orders/{order_id}/items/{item_id}`
 - `POST /api/v1/orders/{order_id}/checkout`
 - `POST /api/v1/orders/{order_id}/payment-confirmation`
-- `GET /api/v1/orders/{order_id}`
+- `GET /api/v1/orders/cart/{order_id}` — fetch full device/terminal order metadata
 - `GET /api/v1/orders/{order_id}/invoice`
 - `POST /api/v1/orders/{order_id}/resend-invoice`
+
+Note: `create`/`get` deliberately live under `/cart` rather than the bare
+`/api/v1/orders` collection path - that path is already the legacy
+consumer endpoint below (`POST /api/v1/orders`, no auth). The two used to
+collide (both routers registered a handler for the exact same path+method,
+and Starlette silently dispatched every legacy checkout request to the
+device-gated enterprise handler instead), which is why a previous
+production incident showed "Missing device bearer token" on the consumer
+app's Pay button. Never reuse the bare path for a new enterprise route.
 
 Customer endpoints:
 

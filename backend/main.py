@@ -171,7 +171,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include enterprise routers before legacy routers where paths overlap.
+# NOTE: enterprise_orders and orders both mount under /api/v1/orders.
+# They no longer share any exact (path, method) pair - enterprise's
+# create/get order routes live under /api/v1/orders/cart(/{order_id}) -
+# so inclusion order here no longer affects which handler wins. Keep it
+# that way: two routers claiming the identical path+method is a silent
+# bug (Starlette dispatches to whichever was registered first, but
+# FastAPI's generated OpenAPI docs display whichever was registered
+# last, so the docs and the actual runtime behavior can disagree - this
+# is exactly what caused the "Missing device bearer token" checkout bug).
 app.include_router(health.router)
 app.include_router(devices.router)
 app.include_router(admin_devices.router)

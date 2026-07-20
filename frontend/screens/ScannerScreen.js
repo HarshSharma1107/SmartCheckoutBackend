@@ -13,9 +13,10 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, Animated,
   ActivityIndicator, Platform, StatusBar, Dimensions,
-  Alert,
+  Alert, ScrollView,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCart } from "../services/CartContext";
 import { scanBarcode } from "../services/api";
 
@@ -54,15 +55,38 @@ function PermissionScreen({ onRequest }) {
 
 // =============================================================
 // PRODUCT RESULT CARD (shown after successful scan)
+//
+// Layout contract (keeps the "Add to Cart" button on-screen no matter
+// how tall the product details get):
+//   - Outer card is capped at maxHeight (45-50% of screen) and never
+//     grows past it — it lays out as a column of [header, scroll, footer].
+//   - Header and footer size to their own content (no flex) so they
+//     never get compressed.
+//   - The middle ScrollView takes `flexShrink: 1`, so it's the only
+//     part that shrinks when content would otherwise overflow the
+//     card's maxHeight — it scrolls internally instead of pushing the
+//     footer down and off the bottom of the screen.
+//   - The footer (Add to Cart / Out of stock) lives outside the
+//     ScrollView entirely, so it is always rendered and always tappable.
 // =============================================================
-function ProductCard({ product, onAdd, onDismiss, slideAnim }) {
+function ProductCard({ product, onAdd, onDismiss, slideAnim, insets }) {
   if (!product) return null;
 
   const taxAmt = product.selling_price * (product.tax_rate / 100);
   const priceInclTax = (product.selling_price + taxAmt).toFixed(2);
 
   return (
-    <Animated.View style={[styles.productCard, { transform: [{ translateY: slideAnim }] }]}>
+    <Animated.View
+      style={[
+        styles.productCard,
+        {
+          maxHeight: SCREEN_H * 0.5,
+          paddingBottom: Math.max(insets.bottom, 12),
+          transform: [{ translateY: slideAnim }],
+        },
+      ]}
+    >
+      {/* Fixed header — always visible, never scrolls */}
       <View style={styles.productCardHeader}>
         <View style={styles.productBadge}>
           <Text style={styles.productBadgeText}>SCANNED</Text>
@@ -72,37 +96,48 @@ function ProductCard({ product, onAdd, onDismiss, slideAnim }) {
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.productName} numberOfLines={2}>{product.name}</Text>
-      {product.brand && <Text style={styles.productBrand}>{product.brand}</Text>}
+      {/* Scrollable details — grows with content, shrinks against maxHeight */}
+      <ScrollView
+        style={styles.productScroll}
+        contentContainerStyle={styles.productScrollContent}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        <Text style={styles.productName}>{product.name}</Text>
+        {product.brand && <Text style={styles.productBrand}>{product.brand}</Text>}
 
-      <View style={styles.productMeta}>
-        <View style={styles.priceBlock}>
-          <Text style={styles.priceLabel}>MRP</Text>
-          <Text style={styles.price}>₹{product.selling_price.toFixed(2)}</Text>
+        <View style={styles.productMeta}>
+          <View style={styles.priceBlock}>
+            <Text style={styles.priceLabel}>MRP</Text>
+            <Text style={styles.price}>₹{product.selling_price.toFixed(2)}</Text>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.priceBlock}>
+            <Text style={styles.priceLabel}>Incl. Tax ({product.tax_rate}%)</Text>
+            <Text style={styles.priceSub}>₹{priceInclTax}</Text>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.priceBlock}>
+            <Text style={styles.priceLabel}>Stock</Text>
+            <Text style={[styles.priceSub, { color: product.in_stock ? COLORS.accent : COLORS.error }]}>
+              {product.qty_available} units
+            </Text>
+          </View>
         </View>
-        <View style={styles.divider} />
-        <View style={styles.priceBlock}>
-          <Text style={styles.priceLabel}>Incl. Tax ({product.tax_rate}%)</Text>
-          <Text style={styles.priceSub}>₹{priceInclTax}</Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.priceBlock}>
-          <Text style={styles.priceLabel}>Stock</Text>
-          <Text style={[styles.priceSub, { color: product.in_stock ? COLORS.accent : COLORS.error }]}>
-            {product.qty_available} units
-          </Text>
-        </View>
+      </ScrollView>
+
+      {/* Sticky footer — outside the ScrollView, always on-screen and tappable */}
+      <View style={styles.productFooter}>
+        {product.in_stock ? (
+          <TouchableOpacity style={styles.addBtn} onPress={onAdd} activeOpacity={0.85}>
+            <Text style={styles.addBtnText}>Add to Cart  +</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.outOfStockBanner}>
+            <Text style={styles.outOfStockText}>Out of Stock</Text>
+          </View>
+        )}
       </View>
-
-      {product.in_stock ? (
-        <TouchableOpacity style={styles.addBtn} onPress={onAdd} activeOpacity={0.85}>
-          <Text style={styles.addBtnText}>Add to Cart  +</Text>
-        </TouchableOpacity>
-      ) : (
-        <View style={styles.outOfStockBanner}>
-          <Text style={styles.outOfStockText}>Out of Stock</Text>
-        </View>
-      )}
     </Animated.View>
   );
 }
@@ -110,9 +145,9 @@ function ProductCard({ product, onAdd, onDismiss, slideAnim }) {
 // =============================================================
 // SCANNER ERROR CARD
 // =============================================================
-function ErrorCard({ message, onDismiss }) {
+function ErrorCard({ message, onDismiss, insets }) {
   return (
-    <View style={styles.errorCard}>
+    <View style={[styles.errorCard, { paddingBottom: Math.max(insets.bottom, 12) + 16 }]}>
       <Text style={styles.errorIcon}>⚠</Text>
       <Text style={styles.errorTitle}>Not Found</Text>
       <Text style={styles.errorMessage}>{message}</Text>
@@ -160,6 +195,7 @@ function Viewfinder({ isScanning }) {
 // =============================================================
 export default function ScannerScreen({ navigation }) {
   const { addItem, itemCount, storeId } = useCart();
+  const insets = useSafeAreaInsets();
 
   const [permission, requestPermission] = useCameraPermissions();
   const [facing,     setFacing]    = useState("back");
@@ -280,7 +316,7 @@ export default function ScannerScreen({ navigation }) {
       <View style={styles.overlayBottom} pointerEvents="none" />
 
       {/* TOP BAR */}
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, { top: insets.top + 12 }]}>
         <TouchableOpacity style={styles.topBtn} onPress={() => navigation.goBack()} activeOpacity={0.7}>
           <Text style={styles.topBtnText}>←</Text>
         </TouchableOpacity>
@@ -314,20 +350,28 @@ export default function ScannerScreen({ navigation }) {
           onAdd={handleAddToCart}
           onDismiss={dismissCard}
           slideAnim={slideAnim}
+          insets={insets}
         />
       )}
 
       {/* ERROR CARD */}
       {state === "error" && (
         <Animated.View style={{ transform: [{ translateY: slideAnim }] }}>
-          <ErrorCard message={errorMsg} onDismiss={dismissCard} />
+          <ErrorCard message={errorMsg} onDismiss={dismissCard} insets={insets} />
         </Animated.View>
       )}
 
-      {/* CART FAB */}
-      {itemCount > 0 && (
+      {/*
+        CART FAB — only shown while idle/scanning. It must NOT render
+        while the product/error card is up: both are bottom-anchored,
+        and the FAB (rendered after them, so painted on top) would sit
+        directly over the card's Add to Cart button and swallow the tap,
+        making the button look "hidden" on every scan after the first
+        item is added. Gating on state keeps them mutually exclusive.
+      */}
+      {itemCount > 0 && (state === "idle" || state === "scanning") && (
         <TouchableOpacity
-          style={styles.cartFab}
+          style={[styles.cartFab, { bottom: Math.max(insets.bottom, Platform.OS === "ios" ? 34 : 16) + 12 }]}
           onPress={() => navigation.navigate("Cart")}
           activeOpacity={0.85}
         >
@@ -438,14 +482,16 @@ const styles = StyleSheet.create({
   loadingText: { color: COLORS.accent, fontSize: 13 },
 
   // --- Product card ---
+  // Column layout: header (fixed) -> scroll (flexShrink, the only part
+  // that can shrink/scroll) -> footer (fixed, always visible). Height is
+  // capped via inline `maxHeight` (SCREEN_H * 0.5) in the component so it
+  // never grows past ~50% of the screen regardless of device size.
   productCard: {
     position: "absolute",
     bottom: 0, left: 0, right: 0,
     backgroundColor: COLORS.surface,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    padding: 24,
-    paddingBottom: Platform.OS === "ios" ? 40 : 28,
     borderTopWidth: 0.5,
     borderColor: COLORS.border,
     shadowColor: "#000",
@@ -453,21 +499,38 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.6,
     shadowOffset: { width: 0, height: -8 },
     elevation: 20,
+    flexDirection: "column",
+    overflow: "hidden",
   },
-  productCardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  productCardHeader: {
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    paddingHorizontal: 24, paddingTop: 24, paddingBottom: 12,
+  },
   productBadge:      { backgroundColor: COLORS.accent + "20", borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4 },
   productBadgeText:  { fontSize: 10, fontWeight: "700", color: COLORS.accent, letterSpacing: 1.5 },
   dismissText:       { fontSize: 18, color: COLORS.textMuted },
+  productScroll:        { flexShrink: 1 },
+  productScrollContent: { paddingHorizontal: 24, paddingBottom: 8, flexGrow: 1 },
   productName:       { fontSize: 20, fontWeight: "700", color: COLORS.text, lineHeight: 26, marginBottom: 4 },
   productBrand:      { fontSize: 13, color: COLORS.textMuted, marginBottom: 18 },
 
-  productMeta:  { flexDirection: "row", alignItems: "center", marginBottom: 20, gap: 12 },
+  productMeta:  { flexDirection: "row", alignItems: "center", marginBottom: 4, gap: 12 },
   priceBlock:   { flex: 1, alignItems: "center" },
   priceLabel:   { fontSize: 10, color: COLORS.textMuted, fontWeight: "600", letterSpacing: 0.5, marginBottom: 4, textAlign: "center" },
   price:        { fontSize: 22, fontWeight: "800", color: COLORS.accent },
   priceSub:     { fontSize: 16, fontWeight: "700", color: COLORS.text },
   divider:      { width: 1, height: 36, backgroundColor: COLORS.border },
 
+  // Sticky footer — sits outside the ScrollView, never scrolls, always
+  // rendered. The hairline top border visually separates it from the
+  // scrollable content above so it reads as "pinned" even when the
+  // content above it is scrolled.
+  productFooter: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.border,
+  },
   addBtn: {
     backgroundColor: COLORS.accent,
     borderRadius: 16,

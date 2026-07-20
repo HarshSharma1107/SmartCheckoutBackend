@@ -16,8 +16,8 @@ import { AppState } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { getOrCreateInstallId, collectDeviceInfo } from "./deviceIdentity";
 import { registerDevice, getDeviceMe, sendHeartbeat, refreshDeviceToken } from "./api";
+import { DEVICE_ACCESS_TOKEN_KEY as ACCESS_TOKEN_KEY } from "./deviceToken";
 
-const ACCESS_TOKEN_KEY = "sc_access_token";
 const REFRESH_TOKEN_KEY = "sc_refresh_token";
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const POLL_INTERVAL_MS = 20_000;
