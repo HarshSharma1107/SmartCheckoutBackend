@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from ..database import get_db
 from ..models import Product, Inventory, Order, OrderItem, Store
 from ..schemas import OrderCreateRequest, OrderResponse, PaymentRequest
+from ..services.email import send_receipt_email
 from ..utils import generate_order_number, format_order
 from ..models import customers as Customer
 
@@ -19,6 +20,7 @@ router = APIRouter(prefix="/api/v1", tags=["orders"])
 @router.post("/orders", response_model=OrderResponse, status_code=201)
 async def create_order(
     payload: OrderCreateRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
     try:
@@ -52,7 +54,7 @@ async def create_order(
         customer = Customer(
             name=payload.customer_name,
             phone=payload.customer_phone,
-            email="",
+            email=payload.customer_email,
             loyalty_points=0,
             tier="STANDARD",
             is_active=True,
@@ -60,6 +62,8 @@ async def create_order(
 
         db.add(customer)
         await db.flush()
+    else:
+        customer.email = payload.customer_email
 
     # ── Process items ──
     order_items_data = []
@@ -219,6 +223,8 @@ async def create_order(
     )
 
     fresh_order = final_result.scalar_one()
+
+    background_tasks.add_task(send_receipt_email, payload.customer_email, fresh_order)
 
     return format_order(fresh_order)
 

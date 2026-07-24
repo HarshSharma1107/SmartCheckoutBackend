@@ -32,7 +32,10 @@ export default function HomeScreen({ navigation }) {
 
   const [name,    setName]    = useState(customer?.name  || "");
   const [phone,   setPhone]   = useState(customer?.phone || "");
+  const [email,   setEmail]   = useState(customer?.email || "");
   const [errors,  setErrors]  = useState({});
+
+  const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
   const fadeAnim  = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -49,13 +52,15 @@ export default function HomeScreen({ navigation }) {
     if (!name.trim())                              errs.name  = "Name is required";
     if (!phone.trim())                             errs.phone = "Phone is required";
     else if (phone.replace(/\D/g, "").length < 10) errs.phone = "Enter a valid 10-digit number";
+    if (!email.trim())                             errs.email = "Email is required";
+    else if (!EMAIL_RE.test(email.trim()))         errs.email = "Enter a valid email address";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
 
   function handleStart() {
     if (!validate()) return;
-    setCustomer({ name: name.trim(), phone: phone.trim() });
+    setCustomer({ name: name.trim(), phone: phone.trim(), email: email.trim() });
     navigation.navigate("Scanner");
   }
 
@@ -113,6 +118,22 @@ export default function HomeScreen({ navigation }) {
                 returnKeyType="done"
               />
               {errors.phone && <Text style={styles.errorText}>{errors.phone}</Text>}
+            </View>
+
+            {/* Email */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Email</Text>
+              <TextInput
+                style={[styles.input, errors.email && styles.inputError]}
+                placeholder="e.g. rahul@example.com"
+                placeholderTextColor={COLORS.textMuted}
+                value={email}
+                onChangeText={(v) => { setEmail(v); setErrors((e) => ({ ...e, email: null })); }}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                returnKeyType="done"
+              />
+              {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
             </View>
           </Animated.View>
 

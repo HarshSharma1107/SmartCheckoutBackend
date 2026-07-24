@@ -1,5 +1,8 @@
+import re
 from typing import Optional, List
 from pydantic import BaseModel, field_validator
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 class ProductResponse(BaseModel):
     product_id: str
@@ -52,6 +55,7 @@ class OrderItemResponse(BaseModel):
 class OrderCreateRequest(BaseModel):
     customer_name: str
     customer_phone: str
+    customer_email: str
     store_id: str
     items: List[CartItemIn]
     payment_method: str = "CASH"
@@ -71,6 +75,14 @@ class OrderCreateRequest(BaseModel):
             raise ValueError("Customer name cannot be empty")
         return v.strip()
 
+    @field_validator("customer_email")
+    @classmethod
+    def email_must_be_valid(cls, v):
+        v = v.strip()
+        if not EMAIL_RE.match(v):
+            raise ValueError("Enter a valid email address")
+        return v
+
 
 
 class OrderResponse(BaseModel):
@@ -78,6 +90,7 @@ class OrderResponse(BaseModel):
     order_number: str
     customer_name: str
     customer_phone: str
+    customer_email: str
     status: str
     subtotal: float
     discount_total: float

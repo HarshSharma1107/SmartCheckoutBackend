@@ -71,6 +71,9 @@ function Receipt({ order, onDone }) {
             <Text style={styles.receiptSectionLabel}>CUSTOMER</Text>
             <Text style={styles.receiptCustomer}>{order.customer_name}</Text>
             <Text style={styles.receiptCustomerPhone}>{order.customer_phone}</Text>
+            {order.customer_email ? (
+              <Text style={styles.receiptCustomerPhone}>{order.customer_email}</Text>
+            ) : null}
           </View>
 
           <View style={styles.receiptDivider} />
@@ -121,7 +124,11 @@ function Receipt({ order, onDone }) {
 
           {/* Footer */}
           <Text style={styles.receiptFooter}>Thank you for shopping with us!</Text>
-          <Text style={styles.receiptFooterSub}>This is your digital receipt.</Text>
+          <Text style={styles.receiptFooterSub}>
+            {order.customer_email
+              ? `A copy of this receipt has been emailed to ${order.customer_email}.`
+              : "This is your digital receipt."}
+          </Text>
         </View>
 
         <TouchableOpacity style={styles.doneBtn} onPress={onDone} activeOpacity={0.85}>
@@ -160,6 +167,7 @@ export default function CheckoutScreen({ navigation }) {
       const payload = {
         customer_name:  customer.name,
         customer_phone: customer.phone,
+        customer_email: customer.email,
         store_id:       storeId,
         payment_method: payMethod,
         items: items.map((i) => ({
@@ -213,6 +221,7 @@ export default function CheckoutScreen({ navigation }) {
           <View style={styles.card}>
             <Text style={styles.customerName}>{customer?.name}</Text>
             <Text style={styles.customerPhone}>{customer?.phone}</Text>
+            <Text style={styles.customerPhone}>{customer?.email}</Text>
           </View>
         </View>
 

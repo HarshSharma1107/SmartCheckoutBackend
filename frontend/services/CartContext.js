@@ -9,7 +9,7 @@ const CartContext = createContext(null);
 
 const initialState = {
   items: [],         // [{ product, quantity }]
-  customer: null,    // { name, phone }
+  customer: null,    // { name, phone, email }
   storeId: null,
 };
 
@@ -105,6 +105,7 @@ export function CartProvider({ children }) {
     ? {
         customer_name:  state.customer.name,
         customer_phone: state.customer.phone,
+        customer_email: state.customer.email,
         store_id:       state.storeId,
         items: state.items.map((i) => ({
           product_id: i.product.product_id,

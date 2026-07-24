@@ -30,3 +30,13 @@ ADMIN_ACCESS_TOKEN_TTL_SECONDS = 60 * 60
 PAIRING_CODE_TTL_SECONDS = 15 * 60
 DEFAULT_BRAND_CODE = os.getenv("DEFAULT_BRAND_CODE", "DEFAULT")
 DEFAULT_BRAND_NAME = os.getenv("DEFAULT_BRAND_NAME", "Default Brand")
+
+# Outgoing mail for order receipts. SMTP_EMAIL/SMTP_PASSWORD are the sending
+# mailbox's address and app password (e.g. a Gmail App Password, not the
+# account login password). Receipt sending is best-effort - if these are
+# unset, checkout still succeeds and the email is just skipped.
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
+SMTP_EMAIL = os.getenv("SMTP_EMAIL")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "SmartCheckout")
