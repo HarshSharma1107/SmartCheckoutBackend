@@ -8,6 +8,7 @@ from .config import DEFAULT_BRAND_CODE, DEFAULT_BRAND_NAME
 from .database import engine, Base
 from .routers import (
     admin_auth,
+    admin_catalog,
     admin_devices,
     admin_terminals,
     brands,
@@ -185,6 +186,7 @@ app.include_router(devices.router)
 app.include_router(admin_devices.router)
 app.include_router(admin_terminals.router)
 app.include_router(admin_auth.router)
+app.include_router(admin_catalog.router)
 app.include_router(brands.router)
 app.include_router(enterprise_products.router)
 app.include_router(enterprise_orders.router)

@@ -46,6 +46,23 @@ payment_method_enum = Enum(
     create_type=False
 )
 
+# product_barcodes.barcode_type is a Postgres enum in the live DB (not a
+# plain varchar) - this must match backend/routers/admin_catalog.py's
+# ProductBarcodeCreateRequest.barcode_type default and the accepted values.
+barcode_type_enum = Enum(
+    "EAN13",
+    "EAN8",
+    "UPC_A",
+    "QR_CODE",
+    "ITF14",
+    "INTERNAL",
+    "QR",
+    "CODE128",
+    name="barcode_type_enum",
+    schema=SCHEMA_NAME,
+    create_type=False
+)
+
 class Category(Base):
     __tablename__ = "categories"
     __table_args__ = {"schema": SCHEMA_NAME}
@@ -89,7 +106,7 @@ class ProductBarcode(Base):
     barcode_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     product_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.products.product_id"), nullable=False)
     barcode_value: Mapped[str] = mapped_column(String(50), nullable=False)
-    barcode_type: Mapped[str] = mapped_column(String(20), default="EAN13")
+    barcode_type: Mapped[str] = mapped_column(barcode_type_enum, default="EAN13")
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
