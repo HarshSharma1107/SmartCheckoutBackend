@@ -10,6 +10,7 @@ from ..database import get_db
 from ..errors import ErrorCode
 from ..models import Brand, Store
 from ..schemas_terminal import BrandCreateRequest, BrandResponse, StoreCreateRequest, StoreResponse
+from ..services.audit import write_audit_log
 
 router = APIRouter(tags=["brands"])
 
@@ -39,6 +40,17 @@ async def create_brand(
     brand = Brand(code=payload.code, name=payload.name, logo_url=payload.logo_url)
     db.add(brand)
     await db.flush()
+
+    await write_audit_log(
+        db,
+        event_type="BRAND_CREATED",
+        entity_type="brand",
+        entity_id=brand.brand_id,
+        actor_type="admin",
+        actor_id=UUID(admin.admin_id),
+        notes=f"code={brand.code}",
+    )
+
     return ok(BrandResponse.model_validate(brand, from_attributes=True).model_dump(mode="json"))
 
 
@@ -98,6 +110,17 @@ async def create_store(
     store = Store(brand_id=payload.brand_id, code=payload.code, name=payload.name, city=payload.city)
     db.add(store)
     await db.flush()
+
+    await write_audit_log(
+        db,
+        event_type="STORE_CREATED",
+        entity_type="store",
+        entity_id=store.store_id,
+        actor_type="admin",
+        actor_id=UUID(admin.admin_id),
+        notes=f"code={store.code} brand={brand.code}",
+    )
+
     return ok(
         StoreResponse(
             store_id=store.store_id,

@@ -7,9 +7,11 @@ from sqlalchemy import text
 from .config import DEFAULT_BRAND_CODE, DEFAULT_BRAND_NAME
 from .database import engine, Base
 from .routers import (
+    admin_audit,
     admin_auth,
     admin_catalog,
     admin_devices,
+    admin_orders,
     admin_terminals,
     brands,
     devices,
@@ -187,6 +189,8 @@ app.include_router(admin_devices.router)
 app.include_router(admin_terminals.router)
 app.include_router(admin_auth.router)
 app.include_router(admin_catalog.router)
+app.include_router(admin_audit.router)
+app.include_router(admin_orders.router)
 app.include_router(brands.router)
 app.include_router(enterprise_products.router)
 app.include_router(enterprise_orders.router)

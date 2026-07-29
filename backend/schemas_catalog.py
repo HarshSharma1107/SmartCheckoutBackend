@@ -7,115 +7,6 @@ from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
-# Categories
-# ---------------------------------------------------------------------------
-
-
-class CategoryResponse(BaseModel):
-    category_id: UUID
-    name: str
-    parent_id: Optional[UUID] = None
-    is_active: bool
-
-
-class CategoryCreateRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
-    parent_id: Optional[UUID] = None
-
-
-# ---------------------------------------------------------------------------
-# Product barcodes
-# ---------------------------------------------------------------------------
-
-
-class ProductBarcodeResponse(BaseModel):
-    barcode_id: UUID
-    product_id: UUID
-    barcode_value: str
-    barcode_type: str
-    is_primary: bool
-    is_active: bool
-    created_at: datetime
-
-
-class ProductBarcodeCreateRequest(BaseModel):
-    barcode_value: str = Field(min_length=1, max_length=50)
-    barcode_type: str = Field(default="EAN13", max_length=20)
-    is_primary: bool = False
-
-
-# ---------------------------------------------------------------------------
-# Products
-# ---------------------------------------------------------------------------
-
-
-class ProductAdminResponse(BaseModel):
-    product_id: UUID
-    sku: str
-    name: str
-    description: Optional[str] = None
-    brand: Optional[str] = None
-    category_id: UUID
-    category_name: Optional[str] = None
-    mrp: Decimal
-    cost_price: Optional[Decimal] = None
-    cgst_rate: Decimal
-    sgst_rate: Decimal
-    is_active: bool
-    is_discontinued: bool
-    created_at: datetime
-    updated_at: datetime
-    barcodes: list[ProductBarcodeResponse] = []
-
-
-class ProductCreateRequest(BaseModel):
-    sku: str = Field(min_length=1, max_length=100)
-    name: str = Field(min_length=1, max_length=500)
-    description: Optional[str] = None
-    brand: Optional[str] = Field(default=None, max_length=200)
-    category_id: UUID
-    mrp: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
-    cost_price: Optional[Decimal] = Field(default=None, ge=0, max_digits=10, decimal_places=2)
-    cgst_rate: Decimal = Field(ge=0, max_digits=5, decimal_places=2)
-    sgst_rate: Decimal = Field(ge=0, max_digits=5, decimal_places=2)
-
-
-class ProductUpdateRequest(BaseModel):
-    sku: Optional[str] = Field(default=None, min_length=1, max_length=100)
-    name: Optional[str] = Field(default=None, min_length=1, max_length=500)
-    description: Optional[str] = None
-    brand: Optional[str] = Field(default=None, max_length=200)
-    category_id: Optional[UUID] = None
-    mrp: Optional[Decimal] = Field(default=None, gt=0, max_digits=10, decimal_places=2)
-    cost_price: Optional[Decimal] = Field(default=None, ge=0, max_digits=10, decimal_places=2)
-    cgst_rate: Optional[Decimal] = Field(default=None, ge=0, max_digits=5, decimal_places=2)
-    sgst_rate: Optional[Decimal] = Field(default=None, ge=0, max_digits=5, decimal_places=2)
-    is_active: Optional[bool] = None
-    is_discontinued: Optional[bool] = None
-
-
-# ---------------------------------------------------------------------------
-# Inventory
-# ---------------------------------------------------------------------------
-
-
-class InventoryRowResponse(BaseModel):
-    inventory_id: UUID
-    product_id: UUID
-    store_id: UUID
-    sku: str
-    product_name: str
-    qty_on_hand: int
-    qty_reserved: int
-    qty_available: int
-    last_updated: datetime
-
-
-class InventoryAdjustRequest(BaseModel):
-    delta: int = Field(description="Positive to add stock, negative to remove")
-
-
-# ---------------------------------------------------------------------------
 # Terminals (list)
 # ---------------------------------------------------------------------------
 
@@ -131,6 +22,83 @@ class AdminTerminalListItem(BaseModel):
     device_id: Optional[UUID] = None
     device_name: Optional[str] = None
     is_online: Optional[bool] = None
+
+
+# ---------------------------------------------------------------------------
+# Orders (admin monitoring)
+# ---------------------------------------------------------------------------
+
+
+class AdminOrderListItem(BaseModel):
+    order_id: UUID
+    order_number: str
+    store_id: UUID
+    store_name: str
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    status: str
+    payment_status: str
+    payment_method: Optional[str] = None
+    grand_total: Decimal
+    ordered_at: datetime
+    completed_at: Optional[datetime] = None
+
+
+class AdminOrderItemResponse(BaseModel):
+    item_id: UUID
+    product_id: UUID
+    product_name: str
+    sku: str
+    quantity: int
+    unit_price: Decimal
+    mrp: Decimal
+    discount_amount: Decimal
+    cgst_amount: Decimal
+    sgst_amount: Decimal
+    line_total: Decimal
+
+
+class AdminOrderDetailResponse(BaseModel):
+    order_id: UUID
+    order_number: str
+    store_id: UUID
+    store_name: str
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    customer_email: Optional[str] = None
+    status: str
+    subtotal: Decimal
+    discount_total: Decimal
+    cgst_total: Decimal
+    sgst_total: Decimal
+    grand_total: Decimal
+    payment_method: Optional[str] = None
+    payment_status: str
+    payment_ref: Optional[str] = None
+    ordered_at: datetime
+    completed_at: Optional[datetime] = None
+    items: list[AdminOrderItemResponse] = []
+
+
+class OrderRefundRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+
+
+# ---------------------------------------------------------------------------
+# Audit logs (list)
+# ---------------------------------------------------------------------------
+
+
+class AuditLogListItem(BaseModel):
+    log_id: UUID
+    event_type: str
+    entity_type: str
+    entity_id: UUID
+    actor_type: str
+    actor_id: Optional[UUID] = None
+    actor_email: Optional[str] = None
+    notes: Optional[str] = None
+    occurred_at: datetime
 
 
 # ---------------------------------------------------------------------------
