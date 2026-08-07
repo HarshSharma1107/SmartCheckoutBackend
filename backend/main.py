@@ -1,18 +1,14 @@
+import logging
 import uuid
 from datetime import datetime
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
-from .config import DEFAULT_BRAND_CODE, DEFAULT_BRAND_NAME
+from .config import DEFAULT_BRAND_CODE, DEFAULT_BRAND_NAME, JWT_SECRET
 from .database import engine, Base
 from .routers import (
-    admin_audit,
-    admin_auth,
-    admin_catalog,
-    admin_devices,
-    admin_orders,
-    admin_terminals,
     brands,
     devices,
     enterprise_customers,
@@ -21,11 +17,16 @@ from .routers import (
     health,
     orders,
     products,
-    reports,
     stores,
     webhooks,
 )
 # from .utils import seed_demo_data
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 SCHEMA_NAME = "ekart_prod"
 
@@ -160,6 +161,72 @@ async def ensure_default_brand_and_backfill_stores(conn):
         )
 
 
+async def ensure_product_expiry_column(conn):
+    """Patch the pre-existing `products` table with `expiry_date`.
+
+    Same reasoning as `ensure_default_brand_and_backfill_stores` above:
+    `Base.metadata.create_all` only creates missing tables, it never adds
+    columns to a table that already exists, and this project doesn't run
+    Alembic in its actual deploy path. Nullable, single-value (not
+    per-batch) expiry date - a scan of an expired product is rejected in
+    routers/products.py.
+    """
+    await conn.execute(text(f"ALTER TABLE {SCHEMA_NAME}.products ADD COLUMN IF NOT EXISTS expiry_date DATE"))
+
+
+async def ensure_products_brand_id_nullable(conn):
+    """`products.brand_id` is a leftover NOT NULL column from an earlier
+    "enterprise" catalog migration that the current, simplified `Product`
+    ORM model never maps or sets. Left NOT NULL, it silently breaks any
+    product INSERT done through this ORM (both the admin panel's
+    create-product endpoint and any future one here). This model doesn't
+    support per-brand product catalogs today, so relax the constraint
+    instead of mapping a column nothing sets.
+    """
+    await conn.execute(text(f"ALTER TABLE {SCHEMA_NAME}.products ALTER COLUMN brand_id DROP NOT NULL"))
+
+
+async def ensure_orders_device_and_idempotency_columns(conn):
+    """Patch the pre-existing `orders` table with `device_id` and
+    `idempotency_key` (same reasoning as the other `ensure_*` functions in
+    this file: `create_all` never adds columns to a table that already
+    exists). `device_id` records which authenticated device actually made
+    the sale (see routers/orders.py create_order, which now derives the
+    order's store/terminal from this device's own assignment rather than
+    trusting client input); `idempotency_key` lets a retried/double-tapped
+    checkout from the same device replay to the original order instead of
+    creating a duplicate.
+    """
+    await conn.execute(
+        text(
+            f"ALTER TABLE {SCHEMA_NAME}.orders "
+            f"ADD COLUMN IF NOT EXISTS device_id UUID REFERENCES {SCHEMA_NAME}.devices(device_id)"
+        )
+    )
+    await conn.execute(text(f"ALTER TABLE {SCHEMA_NAME}.orders ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(100)"))
+    await conn.execute(
+        text(
+            f"CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_device_idempotency_key "
+            f"ON {SCHEMA_NAME}.orders (device_id, idempotency_key) WHERE idempotency_key IS NOT NULL"
+        )
+    )
+
+
+async def ensure_indexes(conn):
+    """Indexes for the scan/checkout hot path that predate this pass -
+    `create_all` only creates indexes declared on tables it's creating for
+    the first time, so a live database that already has these tables needs
+    them added explicitly, same as the column patches above."""
+    await conn.execute(
+        text(f"CREATE INDEX IF NOT EXISTS ix_product_barcodes_barcode_value ON {SCHEMA_NAME}.product_barcodes (barcode_value)")
+    )
+    await conn.execute(
+        text(f"CREATE INDEX IF NOT EXISTS ix_inventory_store_product ON {SCHEMA_NAME}.inventory (store_id, product_id)")
+    )
+    await conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_orders_store_id ON {SCHEMA_NAME}.orders (store_id)"))
+    await conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_order_items_order_id ON {SCHEMA_NAME}.order_items (order_id)"))
+
+
 app = FastAPI(
     title="SmartCheckout API",
     version="1.0.0",
@@ -169,10 +236,36 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    # Every client here (the checkout app, physical devices) authenticates
+    # with a Bearer token, never cookies - allow_credentials=True combined
+    # with a wildcard origin was both unnecessary and, per the CORS spec,
+    # not something browsers actually honor together.
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def log_unhandled_exceptions(request: Request, exc: Exception):
+    """Without this, an unhandled exception anywhere in the app falls
+    through to Starlette's default handler, which returns a bare
+    `Internal Server Error` *plain-text* body (not JSON) and logs nothing
+    anywhere the app's own logging config would capture - the client sees
+    only "HTTP 500" with zero way to correlate it to a backend log line.
+    Log the full traceback with request context here, and return a
+    same-shaped JSON error body so callers (see frontend/services/api.js)
+    get a parseable {detail} instead of falling into its "non-JSON
+    response" fallback path.
+    """
+    logger.exception(
+        "unhandled_exception method=%s path=%s client=%s",
+        request.method, request.url.path, request.client.host if request.client else None,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
 
 # NOTE: enterprise_orders and orders both mount under /api/v1/orders.
 # They no longer share any exact (path, method) pair - enterprise's
@@ -185,17 +278,10 @@ app.add_middleware(
 # is exactly what caused the "Missing device bearer token" checkout bug).
 app.include_router(health.router)
 app.include_router(devices.router)
-app.include_router(admin_devices.router)
-app.include_router(admin_terminals.router)
-app.include_router(admin_auth.router)
-app.include_router(admin_catalog.router)
-app.include_router(admin_audit.router)
-app.include_router(admin_orders.router)
 app.include_router(brands.router)
 app.include_router(enterprise_products.router)
 app.include_router(enterprise_orders.router)
 app.include_router(enterprise_customers.router)
-app.include_router(reports.router)
 app.include_router(webhooks.router)
 app.include_router(products.router)
 app.include_router(orders.router)
@@ -208,8 +294,18 @@ async def ready():
 
 @app.on_event("startup")
 async def startup():
+    if JWT_SECRET == "dev-insecure-secret-change-me":
+        logger.critical(
+            "JWT_SECRET is unset and using the insecure development default - "
+            "every device/session token is forgeable. Set a real JWT_SECRET "
+            "env var before this instance handles production traffic."
+        )
     async with engine.begin() as conn:
         await ensure_database_primitives(conn)
         await conn.run_sync(Base.metadata.create_all)
         await ensure_default_brand_and_backfill_stores(conn)
+        await ensure_product_expiry_column(conn)
+        await ensure_products_brand_id_nullable(conn)
+        await ensure_orders_device_and_idempotency_columns(conn)
+        await ensure_indexes(conn)
     # await seed_demo_data()

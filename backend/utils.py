@@ -12,9 +12,13 @@ def format_order(order: Order) -> OrderResponse:
     return OrderResponse(
         order_id=str(order.order_id),
         order_number=order.order_number,
-        customer_name=order.customer.name if order.customer else "",
-        customer_phone=order.customer.phone if order.customer else "",
-        customer_email=order.customer.email if order.customer else "",
+        # `or ""` guards against a customer row left with a NULL name/email
+        # by a different write path (see routers/orders.py create_order) -
+        # OrderResponse declares these as plain `str`, so a None here would
+        # otherwise fail response_model validation and surface as a 500.
+        customer_name=(order.customer.name or "") if order.customer else "",
+        customer_phone=(order.customer.phone or "") if order.customer else "",
+        customer_email=(order.customer.email or "") if order.customer else "",
         status=order.status,
         subtotal=float(order.subtotal),
         discount_total=float(order.discount_total),

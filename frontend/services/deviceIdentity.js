@@ -12,7 +12,7 @@ import { Platform } from "react-native";
 
 const INSTALL_ID_KEY = "sc_local_install_id";
 
-function generateUuidV4() {
+export function generateUuidV4() {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
     const v = c === "x" ? r : (r & 0x3) | 0x8;

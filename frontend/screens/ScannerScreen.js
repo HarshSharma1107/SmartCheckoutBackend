@@ -194,7 +194,7 @@ function Viewfinder({ isScanning }) {
 // MAIN SCANNER SCREEN
 // =============================================================
 export default function ScannerScreen({ navigation }) {
-  const { addItem, itemCount, storeId } = useCart();
+  const { addItem, itemCount } = useCart();
   const insets = useSafeAreaInsets();
 
   const [permission, requestPermission] = useCameraPermissions();
@@ -247,7 +247,7 @@ export default function ScannerScreen({ navigation }) {
 
     try {
       // 3. Call backend
-      const response = await scanBarcode(barcode, storeId);
+      const response = await scanBarcode(barcode);
 
       if (response.found && response.product) {
         setProduct(response.product);
@@ -263,7 +263,7 @@ export default function ScannerScreen({ navigation }) {
       setState("error");
       showCard();
     }
-  }, [state, lastBarcode, storeId]);
+  }, [state, lastBarcode]);
 
   function handleAddToCart() {
     if (!product) return;

@@ -1,15 +1,12 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 from uuid import UUID
 
-import bcrypt
 import jwt
 from fastapi import Depends, Header, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .config import (
-    ADMIN_ACCESS_TOKEN_TTL_SECONDS,
     DEVICE_ACCESS_TOKEN_TTL_SECONDS,
     DEVICE_REFRESH_TOKEN_TTL_SECONDS,
     JWT_ALGORITHM,
@@ -24,25 +21,6 @@ bearer = HTTPBearer(auto_error=False)
 class DevicePrincipal:
     device_id: str
     token: str
-
-
-@dataclass(frozen=True)
-class AdminPrincipal:
-    admin_id: str
-    role: str
-    brand_id: Optional[str]
-    token: str
-
-
-def hash_password(password: str) -> str:
-    # bcrypt only uses the first 72 bytes of input; schemas_terminal.py caps
-    # password length at 72 to match, so this truncation never silently
-    # drops meaningful characters a user actually typed.
-    return bcrypt.hashpw(password.encode("utf-8")[:72], bcrypt.gensalt()).decode("utf-8")
-
-
-def verify_password(password: str, password_hash: str) -> bool:
-    return bcrypt.checkpw(password.encode("utf-8")[:72], password_hash.encode("utf-8"))
 
 
 def _encode(payload: dict, ttl_seconds: int) -> str:
@@ -84,19 +62,6 @@ def create_device_refresh_token(device_id: UUID) -> str:
     )
 
 
-def create_admin_access_token(admin_id: UUID, role: str, brand_id: Optional[UUID]) -> str:
-    return _encode(
-        {
-            "sub": f"admin:{admin_id}",
-            "admin_id": str(admin_id),
-            "role": role,
-            "brand_id": str(brand_id) if brand_id else None,
-            "type": "admin_access",
-        },
-        ADMIN_ACCESS_TOKEN_TTL_SECONDS,
-    )
-
-
 def decode_device_refresh_token(token: str) -> str:
     """Validate a device refresh token and return the claimed device_id.
 
@@ -134,29 +99,6 @@ async def require_device(
             detail={"code": ErrorCode.UNAUTHORIZED, "message": "Not a device access token"},
         )
     return DevicePrincipal(device_id=claims["device_id"], token=credentials.credentials)
-
-
-async def require_admin(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
-) -> AdminPrincipal:
-    """Verify the admin JWT issued by `POST /api/v1/admin/auth/login`."""
-    if not credentials:
-        raise HTTPException(
-            status_code=401,
-            detail={"code": ErrorCode.UNAUTHORIZED, "message": "Missing admin bearer token"},
-        )
-    claims = _decode(credentials.credentials)
-    if claims.get("type") != "admin_access":
-        raise HTTPException(
-            status_code=401,
-            detail={"code": ErrorCode.UNAUTHORIZED, "message": "Not an admin access token"},
-        )
-    return AdminPrincipal(
-        admin_id=claims["admin_id"],
-        role=claims["role"],
-        brand_id=claims.get("brand_id"),
-        token=credentials.credentials,
-    )
 
 
 async def require_webhook_key(x_webhook_key: str | None = Header(default=None)) -> str:

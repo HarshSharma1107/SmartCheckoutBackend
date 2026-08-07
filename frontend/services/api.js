@@ -75,14 +75,14 @@ async function request(path, options = {}) {
  * Core scan call. Called immediately when barcode is detected.
  * Returns product details + live stock, or error if not found.
  */
-export async function scanBarcode(barcode, storeId = null) {
-  const params = storeId ? `?store_id=${storeId}` : "";
-  return request(`/api/v1/scan/${encodeURIComponent(barcode)}${params}`);
+export async function scanBarcode(barcode) {
+  // No store_id param - the backend derives the store from the
+  // authenticated device's own active terminal assignment.
+  return request(`/api/v1/scan/${encodeURIComponent(barcode)}`);
 }
 
-export async function getProduct(productId, storeId = null) {
-  const params = storeId ? `?store_id=${storeId}` : "";
-  return request(`/api/v1/products/${productId}${params}`);
+export async function getProduct(productId) {
+  return request(`/api/v1/products/${productId}`);
 }
 
 export async function listProducts() {

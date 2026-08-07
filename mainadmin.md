@@ -1,5 +1,16 @@
 # SmartCheckout Admin Panel — Build Spec
 
+> **⚠️ Superseded (2026-07-30):** The architecture described below (admin
+> panel calls this backend directly, "does not get its own backend project")
+> is no longer current. All `/api/v1/admin/...` and `/api/v1/reports/...`
+> routes have been moved out of this repo into a dedicated FastAPI service at
+> `C:\Users\ASUS\OneDrive\Desktop\smartChekoutAdmin\SmartCheckoutAdmin\backend`
+> (package `admin_backend`), which shares this repo's database but is
+> deployed and run separately. This repo now only serves the client-facing
+> checkout app and physical devices. See that service's own `README.md` for
+> current admin API docs. The rest of this file is kept for historical
+> context only.
+
 This file is the single source of truth for building the SmartCheckout admin
 panel. It is written to be **self-contained** — usable from a completely
 empty directory with no other project files present — so every URL, path,

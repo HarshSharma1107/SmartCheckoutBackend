@@ -1,10 +1,10 @@
-from datetime import datetime,timezone
+from datetime import date, datetime, timezone
 import uuid
 from typing import Optional, List
 from decimal import Decimal
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Integer, Numeric, Boolean, Text, ForeignKey, Enum, Index, UniqueConstraint, text
+from sqlalchemy import String, Integer, Numeric, Boolean, Date, Text, ForeignKey, Enum, Index, UniqueConstraint, text
 from .database import Base
 
 SCHEMA_NAME = "ekart_prod"
@@ -47,8 +47,9 @@ payment_method_enum = Enum(
 )
 
 # product_barcodes.barcode_type is a Postgres enum in the live DB (not a
-# plain varchar) - this must match backend/routers/admin_catalog.py's
-# ProductBarcodeCreateRequest.barcode_type default and the accepted values.
+# plain varchar) - this must match the SmartCheckoutAdmin backend's
+# admin_backend/routers/admin_products.py ProductBarcodeCreateRequest.barcode_type
+# default and accepted values (that service owns barcode CRUD now).
 barcode_type_enum = Enum(
     "EAN13",
     "EAN8",
@@ -91,6 +92,10 @@ class Product(Base):
     sgst_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_discontinued: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Single expiry date per product (not per-batch/lot) - see products.py's
+    # scan_barcode, which rejects a scan once this date has passed, same as
+    # a Walmart POS blocking an expired SKU at checkout.
+    expiry_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -101,7 +106,10 @@ class Product(Base):
 
 class ProductBarcode(Base):
     __tablename__ = "product_barcodes"
-    __table_args__ = {"schema": SCHEMA_NAME}
+    __table_args__ = (
+        Index("ix_product_barcodes_barcode_value", "barcode_value"),
+        {"schema": SCHEMA_NAME},
+    )
 
     barcode_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     product_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.products.product_id"), nullable=False)
@@ -150,7 +158,10 @@ class Store(Base):
 
 class Inventory(Base):
     __tablename__ = "inventory"
-    __table_args__ = {"schema": SCHEMA_NAME}
+    __table_args__ = (
+        Index("ix_inventory_store_product", "store_id", "product_id"),
+        {"schema": SCHEMA_NAME},
+    )
 
     inventory_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     product_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.products.product_id"), nullable=False)
@@ -169,12 +180,25 @@ class Inventory(Base):
 
 class Order(Base):
     __tablename__ = "orders"
-    __table_args__ = {"schema": SCHEMA_NAME}
+    __table_args__ = (
+        Index("ix_orders_store_id", "store_id"),
+        # Lets a retried/double-submitted checkout from the same device
+        # replay to the original order instead of creating a duplicate -
+        # NULL idempotency_key (legacy/unkeyed orders) is excluded so it
+        # never collides with itself.
+        Index(
+            "uq_orders_device_idempotency_key", "device_id", "idempotency_key",
+            unique=True, postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
+        {"schema": SCHEMA_NAME},
+    )
 
     order_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     order_number: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(PG_UUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.customers.customer_id"), nullable=True)
     store_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.stores.store_id"), nullable=False)
+    device_id: Mapped[Optional[uuid.UUID]] = mapped_column(PG_UUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.devices.device_id"), nullable=True)
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     status: Mapped[str] = mapped_column(order_status_enum, default="PENDING")
     subtotal: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
     discount_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
@@ -197,7 +221,10 @@ class Order(Base):
 
 class OrderItem(Base):
     __tablename__ = "order_items"
-    __table_args__ = {"schema": SCHEMA_NAME}
+    __table_args__ = (
+        Index("ix_order_items_order_id", "order_id"),
+        {"schema": SCHEMA_NAME},
+    )
 
     item_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     order_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey(f"{SCHEMA_NAME}.orders.order_id"), nullable=False)

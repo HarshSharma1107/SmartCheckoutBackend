@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { useCart } from "../services/CartContext";
 import { createOrder } from "../services/api";
+import { generateUuidV4 } from "../services/deviceIdentity";
 
 const COLORS = {
   bg:          "#0A0A0F",
@@ -150,7 +151,13 @@ export default function CheckoutScreen({ navigation }) {
   const [order,      setOrder]      = useState(null);
   const [errorMsg,   setErrorMsg]   = useState("");
 
+  // One key per checkout-screen mount, reused across retries of the same
+  // attempt so a double-tapped or network-retried Pay never creates a
+  // second order - the backend dedupes on (device, idempotency_key).
+  const idempotencyKeyRef = useRef(generateUuidV4());
+
   async function handleCheckout() {
+    if (loading) return;
     if (!customer) {
       Alert.alert("Missing Info", "Customer information is required.");
       return;
@@ -165,11 +172,12 @@ export default function CheckoutScreen({ navigation }) {
 
     try {
       const payload = {
-        customer_name:  customer.name,
-        customer_phone: customer.phone,
-        customer_email: customer.email,
-        store_id:       storeId,
-        payment_method: payMethod,
+        customer_name:    customer.name,
+        customer_phone:   customer.phone,
+        customer_email:   customer.email,
+        store_id:         storeId,
+        payment_method:   payMethod,
+        idempotency_key:  idempotencyKeyRef.current,
         items: items.map((i) => ({
           product_id: i.product.product_id,
           quantity:   i.quantity,

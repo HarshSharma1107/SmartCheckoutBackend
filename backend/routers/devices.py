@@ -19,7 +19,7 @@ from ..auth import (
 from ..config import DEVICE_ACCESS_TOKEN_TTL_SECONDS, DEVICE_REFRESH_TOKEN_TTL_SECONDS, PAIRING_CODE_TTL_SECONDS
 from ..database import get_db
 from ..errors import ErrorCode
-from ..models import Brand, Device, DeviceTerminalAssignment, Store, Terminal
+from ..models import Device
 from ..schemas_terminal import (
     DeviceHeartbeatRequest,
     DeviceHeartbeatResponse,
@@ -30,6 +30,7 @@ from ..schemas_terminal import (
     DeviceRegisterResponse,
 )
 from ..services.audit import write_audit_log
+from ..services.terminal import get_active_assignment
 
 router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
 
@@ -40,17 +41,6 @@ def _generate_pairing_code() -> str:
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
-
-
-async def _active_assignment(db: AsyncSession, device_id: UUID):
-    result = await db.execute(
-        select(DeviceTerminalAssignment, Terminal, Store, Brand)
-        .join(Terminal, Terminal.terminal_id == DeviceTerminalAssignment.terminal_id)
-        .join(Store, Store.store_id == Terminal.store_id)
-        .join(Brand, Brand.brand_id == Store.brand_id)
-        .where(DeviceTerminalAssignment.device_id == device_id, DeviceTerminalAssignment.revoked_at.is_(None))
-    )
-    return result.first()
 
 
 def _issue_device_tokens(device: Device) -> tuple[str, str]:
@@ -124,7 +114,7 @@ async def register_device(payload: DeviceRegisterRequest, db: AsyncSession = Dep
         )
 
     if device.status == "ASSIGNED":
-        row = await _active_assignment(db, device.device_id)
+        row = await get_active_assignment(db, device.device_id)
         if row is None:
             # Assignment was revoked without resetting device status back to
             # UNASSIGNED elsewhere - fall through and treat it as unassigned
@@ -220,7 +210,7 @@ async def get_me(principal: DevicePrincipal = Depends(require_device), db: Async
     if device is None:
         raise HTTPException(status_code=404, detail={"code": ErrorCode.NOT_FOUND, "message": "Device not found"})
 
-    row = await _active_assignment(db, device_id)
+    row = await get_active_assignment(db, device_id)
     if row is None:
         return ok(DeviceMeResponse(device_id=device.device_id, status="UNASSIGNED").model_dump(mode="json"))
 

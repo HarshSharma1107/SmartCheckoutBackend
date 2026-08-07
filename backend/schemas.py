@@ -1,6 +1,6 @@
 import re
 from typing import Optional, List
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -17,6 +17,7 @@ class ProductResponse(BaseModel):
     qty_available: int
     category_name: Optional[str]
     in_stock: bool
+    expiry_date: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -59,6 +60,12 @@ class OrderCreateRequest(BaseModel):
     store_id: str
     items: List[CartItemIn]
     payment_method: str = "CASH"
+    # Optional client-generated key (one per checkout attempt) used to make
+    # a retried/double-submitted request return the original order instead
+    # of creating a duplicate. store_id itself is informational only now -
+    # the authoritative store comes from the authenticated device's active
+    # terminal assignment (see routers/orders.py create_order).
+    idempotency_key: Optional[str] = Field(default=None, max_length=100)
 
     @field_validator("customer_phone")
     @classmethod
