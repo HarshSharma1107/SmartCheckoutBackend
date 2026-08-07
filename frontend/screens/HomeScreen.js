@@ -10,20 +10,9 @@ import {
   Animated,
 } from "react-native";
 import { useCart } from "../services/CartContext";
-
-const COLORS = {
-  bg:          "#0A0A0F",
-  surface:     "#13131A",
-  surfaceHigh: "#1C1C27",
-  border:      "#2A2A3D",
-  accent:      "#00E5A0",
-  accentDim:   "#00E5A020",
-  text:        "#F0F0F8",
-  textMuted:   "#6B6B8A",
-  error:       "#FF5370",
-  errorDim:    "#FF537015",
-  white:       "#FFFFFF",
-};
+import { COLORS, RADIUS } from "../theme";
+import PrimaryButton from "../components/PrimaryButton";
+import Card from "../components/Card";
 
 export default function HomeScreen({ navigation }) {
   // storeId is set by TerminalStoreSync (App.js) once the device's
@@ -37,6 +26,22 @@ export default function HomeScreen({ navigation }) {
 
   const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
+  // Mirrors backend.schemas.OrderCreateRequest.phone_must_be_valid exactly -
+  // a number this screen accepts must never be rejected later at checkout.
+  function normalizeIndianPhone(raw) {
+    let digits = raw.replace(/\D/g, "");
+    if (digits.length === 12 && digits.startsWith("91")) digits = digits.slice(2);
+    else if (digits.length === 11 && digits.startsWith("0")) digits = digits.slice(1);
+    return digits;
+  }
+
+  function isValidIndianPhone(raw) {
+    const digits = normalizeIndianPhone(raw);
+    return digits.length === 10 && /^[6-9]/.test(digits);
+  }
+
+  const formIsValid = name.trim().length > 0 && isValidIndianPhone(phone) && EMAIL_RE.test(email.trim());
+
   const fadeAnim  = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
@@ -49,18 +54,18 @@ export default function HomeScreen({ navigation }) {
 
   function validate() {
     const errs = {};
-    if (!name.trim())                              errs.name  = "Name is required";
-    if (!phone.trim())                             errs.phone = "Phone is required";
-    else if (phone.replace(/\D/g, "").length < 10) errs.phone = "Enter a valid 10-digit number";
-    if (!email.trim())                             errs.email = "Email is required";
-    else if (!EMAIL_RE.test(email.trim()))         errs.email = "Enter a valid email address";
+    if (!name.trim())                        errs.name  = "Name is required";
+    if (!phone.trim())                       errs.phone = "Phone is required";
+    else if (!isValidIndianPhone(phone))     errs.phone = "Enter a valid 10-digit mobile number.";
+    if (!email.trim())                       errs.email = "Email is required";
+    else if (!EMAIL_RE.test(email.trim()))   errs.email = "Enter a valid email address";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
 
   function handleStart() {
     if (!validate()) return;
-    setCustomer({ name: name.trim(), phone: phone.trim(), email: email.trim() });
+    setCustomer({ name: name.trim(), phone: normalizeIndianPhone(phone), email: email.trim() });
     navigation.navigate("Scanner");
   }
 
@@ -86,7 +91,8 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.tagline}>Scan. Add. Pay. Done.</Text>
           </Animated.View>
 
-          <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
+          <Animated.View style={{ opacity: fadeAnim }}>
+          <Card style={styles.card}>
             <Text style={styles.sectionLabel}>CUSTOMER DETAILS</Text>
 
             {/* Name */}
@@ -135,6 +141,7 @@ export default function HomeScreen({ navigation }) {
               />
               {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
             </View>
+          </Card>
           </Animated.View>
 
           {/* Cart summary (if returning) */}
@@ -145,10 +152,13 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           )}
 
-          <TouchableOpacity style={styles.startBtn} onPress={handleStart} activeOpacity={0.85}>
-            <Text style={styles.startBtnText}>Start Shopping</Text>
-            <Text style={styles.startBtnIcon}>→</Text>
-          </TouchableOpacity>
+          <PrimaryButton
+            label="Start Shopping"
+            icon="→"
+            onPress={handleStart}
+            disabled={!formIsValid}
+            style={styles.startBtn}
+          />
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -162,12 +172,15 @@ const styles = StyleSheet.create({
   scroll:           { flexGrow: 1, paddingHorizontal: 20, paddingTop: 60, paddingBottom: 40 },
 
   header:           { alignItems: "center", marginBottom: 36 },
-  logoMark:         { width: 56, height: 56, borderRadius: 16, backgroundColor: COLORS.accent, alignItems: "center", justifyContent: "center", marginBottom: 16 },
+  logoMark:         { width: 56, height: 56, borderRadius: RADIUS.lg, backgroundColor: COLORS.accent, alignItems: "center", justifyContent: "center", marginBottom: 16 },
   logoInner:        { width: 24, height: 24, borderRadius: 6, backgroundColor: COLORS.bg },
   appName:          { fontSize: 28, fontWeight: "700", color: COLORS.text, letterSpacing: -0.5 },
   tagline:          { fontSize: 14, color: COLORS.textMuted, marginTop: 4, letterSpacing: 0.3 },
 
-  card:             { backgroundColor: COLORS.surface, borderRadius: 20, padding: 20, borderWidth: 0.5, borderColor: COLORS.border, marginBottom: 16 },
+  // Home's customer-details card intentionally uses a larger radius/padding
+  // than the standard Card default (16/16) for emphasis - preserved via
+  // override rather than normalized away.
+  card:             { borderRadius: RADIUS.xl, padding: 20, marginBottom: 16 },
   sectionLabel:     { fontSize: 10, fontWeight: "700", color: COLORS.textMuted, letterSpacing: 2, marginBottom: 16 },
 
   fieldGroup:       { marginBottom: 18 },
@@ -176,7 +189,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surfaceHigh,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 12,
+    borderRadius: RADIUS.sm,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
@@ -185,25 +198,12 @@ const styles = StyleSheet.create({
   inputError:       { borderColor: COLORS.error, backgroundColor: COLORS.errorDim },
   errorText:        { fontSize: 12, color: COLORS.error, marginTop: 6 },
 
-  storeGrid:        { gap: 8 },
-  storeChip: {
-    backgroundColor: COLORS.surfaceHigh,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    padding: 14,
-  },
-  storeChipActive:      { backgroundColor: COLORS.accentDim, borderColor: COLORS.accent },
-  storeChipText:        { fontSize: 14, fontWeight: "600", color: COLORS.textMuted },
-  storeChipTextActive:  { color: COLORS.accent },
-  storeChipCity:        { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
-
   cartResume: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     backgroundColor: COLORS.surfaceHigh,
-    borderRadius: 12,
+    borderRadius: RADIUS.sm,
     padding: 14,
     marginBottom: 16,
     borderWidth: 1,
@@ -212,16 +212,5 @@ const styles = StyleSheet.create({
   cartResumeText:   { fontSize: 14, color: COLORS.text },
   cartResumeAction: { fontSize: 14, color: COLORS.accent, fontWeight: "600" },
 
-  startBtn: {
-    backgroundColor: COLORS.accent,
-    borderRadius: 16,
-    paddingVertical: 18,
-    paddingHorizontal: 24,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-  },
-  startBtnText:     { fontSize: 17, fontWeight: "700", color: COLORS.bg, letterSpacing: -0.3 },
-  startBtnIcon:     { fontSize: 20, fontWeight: "700", color: COLORS.bg },
+  startBtn: { paddingVertical: 18 },
 });

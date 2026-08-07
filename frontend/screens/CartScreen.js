@@ -8,17 +8,10 @@ import {
   Platform, StatusBar, Alert,
 } from "react-native";
 import { useCart } from "../services/CartContext";
-
-const COLORS = {
-  bg:       "#0A0A0F",
-  surface:  "#13131A",
-  surfaceHigh: "#1C1C27",
-  border:   "#2A2A3D",
-  accent:   "#00E5A0",
-  error:    "#FF5370",
-  text:     "#F0F0F8",
-  textMuted:"#6B6B8A",
-};
+import { COLORS, RADIUS } from "../theme";
+import PrimaryButton from "../components/PrimaryButton";
+import Card from "../components/Card";
+import IconState from "../components/IconState";
 
 function CartItem({ item, onIncrease, onDecrease, onRemove }) {
   const { product, quantity } = item;
@@ -27,7 +20,7 @@ function CartItem({ item, onIncrease, onDecrease, onRemove }) {
   const lineTotal  = lineBase + tax;
 
   return (
-    <View style={styles.itemCard}>
+    <Card>
       <View style={styles.itemTop}>
         <View style={styles.itemInfo}>
           <Text style={styles.itemName} numberOfLines={2}>{product.name}</Text>
@@ -69,20 +62,19 @@ function CartItem({ item, onIncrease, onDecrease, onRemove }) {
           <Text style={styles.taxNote}>incl. {product.tax_rate}% GST</Text>
         </View>
       </View>
-    </View>
+    </Card>
   );
 }
 
 function EmptyCart({ onScan }) {
   return (
-    <View style={styles.emptyContainer}>
-      <Text style={styles.emptyIcon}>🛒</Text>
-      <Text style={styles.emptyTitle}>Cart is empty</Text>
-      <Text style={styles.emptyDesc}>Scan products to add them here</Text>
-      <TouchableOpacity style={styles.scanNowBtn} onPress={onScan} activeOpacity={0.85}>
-        <Text style={styles.scanNowBtnText}>Scan a Product</Text>
-      </TouchableOpacity>
-    </View>
+    <IconState
+      icon="🛒"
+      title="Cart is empty"
+      description="Scan products to add them here"
+      actionLabel="Scan a Product"
+      onAction={onScan}
+    />
   );
 }
 
@@ -176,14 +168,11 @@ export default function CartScreen({ navigation }) {
               <Text style={styles.totalValue}>₹{grandTotal.toFixed(2)}</Text>
             </View>
 
-            <TouchableOpacity
-              style={styles.checkoutBtn}
+            <PrimaryButton
+              label="Proceed to Checkout"
+              icon="→"
               onPress={() => navigation.navigate("Checkout")}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.checkoutBtnText}>Proceed to Checkout</Text>
-              <Text style={styles.checkoutArrow}>→</Text>
-            </TouchableOpacity>
+            />
           </View>
         </>
       )}
@@ -214,13 +203,6 @@ const styles = StyleSheet.create({
   list:        { padding: 16, paddingBottom: 8 },
   separator:   { height: 10 },
 
-  itemCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 0.5,
-    borderColor: COLORS.border,
-  },
   itemTop:     { flexDirection: "row", marginBottom: 14 },
   itemInfo:    { flex: 1, marginRight: 12 },
   itemName:    { fontSize: 15, fontWeight: "600", color: COLORS.text, lineHeight: 20 },
@@ -243,13 +225,6 @@ const styles = StyleSheet.create({
   lineTotal:   { fontSize: 18, fontWeight: "700", color: COLORS.accent, marginTop: 2 },
   taxNote:     { fontSize: 10, color: COLORS.textMuted, marginTop: 1 },
 
-  emptyContainer: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 40 },
-  emptyIcon:      { fontSize: 64, marginBottom: 20 },
-  emptyTitle:     { fontSize: 22, fontWeight: "700", color: COLORS.text, marginBottom: 8 },
-  emptyDesc:      { fontSize: 14, color: COLORS.textMuted, textAlign: "center", marginBottom: 28 },
-  scanNowBtn:     { backgroundColor: COLORS.accent, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 32 },
-  scanNowBtnText: { fontSize: 16, fontWeight: "700", color: COLORS.bg },
-
   summaryPanel: {
     backgroundColor: COLORS.surface,
     borderTopWidth: 0.5,
@@ -263,15 +238,4 @@ const styles = StyleSheet.create({
   summaryTotal: { paddingTop: 12, borderTopWidth: 0.5, borderColor: COLORS.border, marginTop: 4, marginBottom: 16 },
   totalLabel:   { fontSize: 16, fontWeight: "700", color: COLORS.text },
   totalValue:   { fontSize: 20, fontWeight: "800", color: COLORS.accent },
-  checkoutBtn: {
-    backgroundColor: COLORS.accent,
-    borderRadius: 16,
-    paddingVertical: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-  },
-  checkoutBtnText: { fontSize: 17, fontWeight: "700", color: COLORS.bg },
-  checkoutArrow:   { fontSize: 20, fontWeight: "700", color: COLORS.bg },
 });

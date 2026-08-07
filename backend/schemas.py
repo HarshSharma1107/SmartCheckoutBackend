@@ -71,9 +71,19 @@ class OrderCreateRequest(BaseModel):
     @classmethod
     def phone_must_be_valid(cls, v):
         digits = "".join(c for c in v if c.isdigit())
-        if len(digits) < 10:
-            raise ValueError("Phone number must have at least 10 digits")
-        return v
+        # Strip a leading country/trunk prefix (+91 / 91 / 0) so "9876543210",
+        # "+919876543210" and "09876543210" all normalize to the same 10-digit
+        # value - this also keeps the same real customer matching to one
+        # `customers` row regardless of which form they type (see
+        # routers/orders.py create_order, which matches by exact phone
+        # string equality).
+        if len(digits) == 12 and digits.startswith("91"):
+            digits = digits[2:]
+        elif len(digits) == 11 and digits.startswith("0"):
+            digits = digits[1:]
+        if len(digits) != 10 or digits[0] not in "6789":
+            raise ValueError("Enter a valid 10-digit mobile number.")
+        return digits
 
     @field_validator("customer_name")
     @classmethod

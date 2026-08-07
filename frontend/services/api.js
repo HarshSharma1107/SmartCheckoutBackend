@@ -6,12 +6,64 @@
 import { getDeviceAccessToken } from "./deviceToken";
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL || "https://smartcheckoutbackend.onrender.com";
+const TIMEOUT_MS = 15_000;
+const RETRY_DELAY_MS = 800;
+const TRANSIENT_STATUSES = new Set([502, 503, 504]);
 
 class ApiError extends Error {
   constructor(message, status) {
     super(message);
     this.status = status;
   }
+}
+
+// Diagnostic-only - never shown to a user, but still shouldn't run in a
+// release build.
+function devLog(...args) {
+  if (__DEV__) console.error(...args);
+}
+
+async function attemptRequest(url, config) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  let res;
+  try {
+    res = await fetch(url, { ...config, signal: controller.signal });
+  } catch (err) {
+    devLog(`[api] ${config.method || "GET"} ${url} - fetch failed:`, err.message);
+    const timedOut = err.name === "AbortError";
+    throw new ApiError(timedOut ? "Request timed out. Please try again." : "Network error — check your connection", 0);
+  } finally {
+    clearTimeout(timer);
+  }
+
+  // Read the body as text first: error responses aren't guaranteed to be
+  // JSON (e.g. a raw 500 from an unhandled backend exception, or a Cloudflare/
+  // Render gateway page during a cold start), and calling res.json() straight
+  // away would throw and get misreported as a network error instead of the
+  // real status.
+  const rawBody = await res.text();
+  let data = null;
+  try {
+    data = rawBody ? JSON.parse(rawBody) : null;
+  } catch {
+    devLog(`[api] ${config.method || "GET"} ${url} - non-JSON response (HTTP ${res.status}):`, rawBody.slice(0, 500));
+    throw new ApiError(`Server error (HTTP ${res.status})`, res.status);
+  }
+
+  if (!res.ok) {
+    // FastAPI's default error shape is {detail: {code, message}} or
+    // {detail: "string"}; the terminal-provisioning endpoints also use
+    // {success:false, error:{code,message}}. Handle all three so the
+    // thrown message is always readable text, not "[object Object]".
+    const detail = data?.detail ?? data?.error;
+    const message = typeof detail === "string" ? detail : detail?.message || `Request failed (HTTP ${res.status})`;
+    devLog(`[api] ${config.method || "GET"} ${url} - HTTP ${res.status}:`, message);
+    throw new ApiError(message, res.status);
+  }
+  // Terminal-provisioning endpoints wrap payloads as {success, data, error}.
+  return data && typeof data === "object" && "data" in data && "success" in data ? data.data : data;
 }
 
 async function request(path, options = {}) {
@@ -31,40 +83,21 @@ async function request(path, options = {}) {
 
   const config = { ...options, headers };
 
-  let res;
   try {
-    res = await fetch(url, config);
+    return await attemptRequest(url, config);
   } catch (err) {
-    console.error(`[api] ${config.method || "GET"} ${url} - fetch failed:`, err.message);
-    throw new ApiError("Network error — check your connection", 0);
+    // One retry, and only for transient failures: a dropped connection/our
+    // own timeout (status 0), or a 502/503/504 (the Render-cold-start
+    // class of error). Never retried for 4xx or other 5xx - those won't be
+    // fixed by trying again. Retrying POST /orders is safe here because
+    // checkout carries an idempotency key (see CheckoutScreen.js) - a
+    // retried create-order call replays the original order instead of
+    // creating a duplicate.
+    const isTransient = err.status === 0 || TRANSIENT_STATUSES.has(err.status);
+    if (!isTransient) throw err;
+    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    return attemptRequest(url, config);
   }
-
-  // Read the body as text first: error responses aren't guaranteed to be
-  // JSON (e.g. a raw 500 from an unhandled backend exception, or a Cloudflare/
-  // Render gateway page during a cold start), and calling res.json() straight
-  // away would throw and get misreported as a network error instead of the
-  // real status.
-  const rawBody = await res.text();
-  let data = null;
-  try {
-    data = rawBody ? JSON.parse(rawBody) : null;
-  } catch {
-    console.error(`[api] ${config.method || "GET"} ${url} - non-JSON response (HTTP ${res.status}):`, rawBody.slice(0, 500));
-    throw new ApiError(`Server error (HTTP ${res.status})`, res.status);
-  }
-
-  if (!res.ok) {
-    // FastAPI's default error shape is {detail: {code, message}} or
-    // {detail: "string"}; the terminal-provisioning endpoints also use
-    // {success:false, error:{code,message}}. Handle all three so the
-    // thrown message is always readable text, not "[object Object]".
-    const detail = data?.detail ?? data?.error;
-    const message = typeof detail === "string" ? detail : detail?.message || `Request failed (HTTP ${res.status})`;
-    console.error(`[api] ${config.method || "GET"} ${url} - HTTP ${res.status}:`, message);
-    throw new ApiError(message, res.status);
-  }
-  // Terminal-provisioning endpoints wrap payloads as {success, data, error}.
-  return data && typeof data === "object" && "data" in data && "success" in data ? data.data : data;
 }
 
 // =============================================================

@@ -17,6 +17,7 @@ import * as SecureStore from "expo-secure-store";
 import { getOrCreateInstallId, collectDeviceInfo } from "./deviceIdentity";
 import { registerDevice, getDeviceMe, sendHeartbeat, refreshDeviceToken } from "./api";
 import { DEVICE_ACCESS_TOKEN_KEY as ACCESS_TOKEN_KEY } from "./deviceToken";
+import { getDisplayMessage } from "./errorMessages";
 
 const REFRESH_TOKEN_KEY = "sc_refresh_token";
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -75,7 +76,7 @@ export function TerminalProvider({ children }) {
       setPairingCodeExpiresAt(data.pairing_code_expires_at);
       setStatus("pending");
     } catch (err) {
-      setErrorMessage(err.message || "Could not reach the server");
+      setErrorMessage(getDisplayMessage(err));
       setStatus("error");
     }
   }, [loadMe]);

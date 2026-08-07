@@ -3,11 +3,13 @@ import uuid
 from datetime import datetime
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from .config import DEFAULT_BRAND_CODE, DEFAULT_BRAND_NAME, JWT_SECRET
 from .database import engine, Base
+from .errors import ErrorCode
 from .routers import (
     brands,
     devices,
@@ -244,6 +246,39 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+_FIELD_ERROR_CODES = {
+    "customer_phone": ErrorCode.INVALID_PHONE,
+    "customer_email": ErrorCode.INVALID_EMAIL,
+}
+
+
+@app.exception_handler(RequestValidationError)
+async def format_validation_errors(request: Request, exc: RequestValidationError):
+    """FastAPI's default 422 body is `{"detail": [{"loc": [...], "msg": ...}, ...]}`
+    - an array, not the `{code, message}` shape every other error response in
+    this API uses. frontend/services/api.js's error parser only understands
+    a string or a `{code,message}` object for `detail`, so against that array
+    it fell through to a generic "Request failed (HTTP 422)" and silently
+    discarded whatever friendly text a validator (e.g. the phone/email
+    checks in schemas.py) actually raised. Reshape to the standard envelope
+    here, once, so every validation error across the whole API - not just
+    phone/email - reaches the user as readable text.
+    """
+    errors = exc.errors()
+    message = "Invalid request."
+    code = ErrorCode.VALIDATION_ERROR
+    if errors:
+        first = errors[0]
+        raw_msg = first.get("msg", message)
+        # Pydantic v2 prefixes a validator's raised ValueError text with
+        # "Value error, " - strip that back off to get the original message.
+        message = raw_msg[len("Value error, "):] if raw_msg.startswith("Value error, ") else raw_msg
+        loc = first.get("loc") or ()
+        field = loc[-1] if loc else None
+        code = _FIELD_ERROR_CODES.get(field, ErrorCode.VALIDATION_ERROR)
+    return JSONResponse(status_code=422, content={"detail": {"code": str(code), "message": message}})
 
 
 @app.exception_handler(Exception)

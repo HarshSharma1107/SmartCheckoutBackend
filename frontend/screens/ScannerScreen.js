@@ -13,42 +13,50 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, Animated,
   ActivityIndicator, Platform, StatusBar, Dimensions,
-  Alert, ScrollView,
+  Alert, ScrollView, Linking,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCart } from "../services/CartContext";
 import { scanBarcode } from "../services/api";
+import { getDisplayMessage } from "../services/errorMessages";
+import { COLORS, RADIUS } from "../theme";
+import IconState from "../components/IconState";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 const SCAN_AREA_SIZE = SCREEN_W * 0.7;
 const DEBOUNCE_MS = 1500; // prevent re-scanning same barcode too fast
-
-const COLORS = {
-  bg:       "#0A0A0F",
-  surface:  "#13131A",
-  border:   "#2A2A3D",
-  accent:   "#00E5A0",
-  error:    "#FF5370",
-  text:     "#F0F0F8",
-  textMuted:"#6B6B8A",
-  overlay:  "rgba(0,0,0,0.65)",
-};
 
 // =============================================================
 // PERMISSION GATE SCREEN
 // =============================================================
 function PermissionScreen({ onRequest }) {
   return (
-    <View style={styles.permContainer}>
-      <Text style={styles.permIcon}>📷</Text>
-      <Text style={styles.permTitle}>Camera Access Needed</Text>
-      <Text style={styles.permDesc}>
-        SmartCheckout needs camera access to scan product barcodes.
-      </Text>
-      <TouchableOpacity style={styles.permBtn} onPress={onRequest} activeOpacity={0.85}>
-        <Text style={styles.permBtnText}>Grant Camera Access</Text>
-      </TouchableOpacity>
+    <View style={styles.permScreenBg}>
+      <IconState
+        icon="📷"
+        title="Camera Access Needed"
+        description="SmartCheckout needs camera access to scan product barcodes."
+        actionLabel="Grant Camera Access"
+        onAction={onRequest}
+      />
+    </View>
+  );
+}
+
+// Shown once the OS permission prompt itself has been permanently declined
+// ("Don't ask again") - re-requesting from here would silently no-op, so
+// the only working path left is the device's own Settings app.
+function PermissionBlockedScreen() {
+  return (
+    <View style={styles.permScreenBg}>
+      <IconState
+        icon="📷"
+        title="Camera Permission Required"
+        description="Please enable camera permission for SmartCheckout in your phone's Settings to scan products."
+        actionLabel="Open Settings"
+        onAction={() => Linking.openSettings()}
+      />
     </View>
   );
 }
@@ -259,7 +267,7 @@ export default function ScannerScreen({ navigation }) {
         showCard();
       }
     } catch (err) {
-      setErrorMsg(err.message || "Network error. Try again.");
+      setErrorMsg(getDisplayMessage(err));
       setState("error");
       showCard();
     }
@@ -283,6 +291,9 @@ export default function ScannerScreen({ navigation }) {
   }
 
   if (!permission.granted) {
+    if (!permission.canAskAgain) {
+      return <PermissionBlockedScreen />;
+    }
     return <PermissionScreen onRequest={requestPermission} />;
   }
 
@@ -323,9 +334,18 @@ export default function ScannerScreen({ navigation }) {
 
         <Text style={styles.topTitle}>Scan Product</Text>
 
-        <TouchableOpacity style={styles.topBtn} onPress={() => setTorch((t) => !t)} activeOpacity={0.7}>
-          <Text style={styles.topBtnText}>{torch ? "🔦" : "💡"}</Text>
-        </TouchableOpacity>
+        <View style={styles.topBtnGroup}>
+          <TouchableOpacity
+            style={styles.topBtn}
+            onPress={() => setFacing((f) => (f === "back" ? "front" : "back"))}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.topBtnText}>🔄</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.topBtn} onPress={() => setTorch((t) => !t)} activeOpacity={0.7}>
+            <Text style={styles.topBtnText}>{torch ? "🔦" : "💡"}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* HINT TEXT */}
@@ -451,6 +471,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 20,
   },
+  topBtnGroup: { flexDirection: "row", gap: 10 },
   topBtn:     { width: 40, height: 40, borderRadius: 12, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center" },
   topBtnText: { fontSize: 18, color: COLORS.text },
   topTitle:   { fontSize: 16, fontWeight: "700", color: COLORS.text },
@@ -556,8 +577,8 @@ const styles = StyleSheet.create({
   errorTitle:   { fontSize: 20, fontWeight: "700", color: COLORS.text, marginBottom: 8 },
   errorMessage: { fontSize: 14, color: COLORS.textMuted, textAlign: "center", lineHeight: 20, marginBottom: 20 },
   errorBtn: {
-    backgroundColor: COLORS.surfaceHigh ?? "#1C1C27",
-    borderRadius: 14,
+    backgroundColor: COLORS.surfaceHigh,
+    borderRadius: RADIUS.md,
     paddingVertical: 14,
     paddingHorizontal: 32,
     borderWidth: 1,
@@ -589,10 +610,5 @@ const styles = StyleSheet.create({
   cartFabArrow: { fontSize: 18, fontWeight: "700", color: COLORS.accent },
 
   // --- Permission ---
-  permContainer: { flex: 1, backgroundColor: COLORS.bg, alignItems: "center", justifyContent: "center", paddingHorizontal: 40 },
-  permIcon:      { fontSize: 56, marginBottom: 20 },
-  permTitle:     { fontSize: 22, fontWeight: "700", color: COLORS.text, marginBottom: 12, textAlign: "center" },
-  permDesc:      { fontSize: 14, color: COLORS.textMuted, textAlign: "center", lineHeight: 22, marginBottom: 32 },
-  permBtn:       { backgroundColor: COLORS.accent, borderRadius: 16, paddingVertical: 16, paddingHorizontal: 32 },
-  permBtnText:   { fontSize: 16, fontWeight: "700", color: COLORS.bg },
+  permScreenBg: { flex: 1, backgroundColor: COLORS.bg },
 });

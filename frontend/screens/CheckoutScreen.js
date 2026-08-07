@@ -5,24 +5,15 @@
 import React, { useState, useRef } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Platform, StatusBar, ActivityIndicator, Alert, Animated,
+  Platform, StatusBar, Alert, Animated,
 } from "react-native";
 import { useCart } from "../services/CartContext";
 import { createOrder } from "../services/api";
 import { generateUuidV4 } from "../services/deviceIdentity";
-
-const COLORS = {
-  bg:          "#0A0A0F",
-  surface:     "#13131A",
-  surfaceHigh: "#1C1C27",
-  border:      "#2A2A3D",
-  accent:      "#00E5A0",
-  accentDim:   "#00E5A015",
-  text:        "#F0F0F8",
-  textMuted:   "#6B6B8A",
-  error:       "#FF5370",
-  gold:        "#FFB800",
-};
+import { getDisplayMessage } from "../services/errorMessages";
+import { COLORS, RADIUS } from "../theme";
+import PrimaryButton from "../components/PrimaryButton";
+import Card from "../components/Card";
 
 const PAYMENT_METHODS = [
   { id: "CASH",   label: "Cash",   icon: "💵" },
@@ -132,9 +123,7 @@ function Receipt({ order, onDone }) {
           </Text>
         </View>
 
-        <TouchableOpacity style={styles.doneBtn} onPress={onDone} activeOpacity={0.85}>
-          <Text style={styles.doneBtnText}>Start New Shopping Session</Text>
-        </TouchableOpacity>
+        <PrimaryButton label="Start New Shopping Session" onPress={onDone} />
       </ScrollView>
     </Animated.View>
   );
@@ -188,7 +177,7 @@ export default function CheckoutScreen({ navigation }) {
       setOrder(result);
       clearCart();
     } catch (err) {
-      setErrorMsg(err.message || "Checkout failed. Please try again.");
+      setErrorMsg(getDisplayMessage(err));
     } finally {
       setLoading(false);
     }
@@ -226,17 +215,17 @@ export default function CheckoutScreen({ navigation }) {
         {/* Customer info */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>CUSTOMER</Text>
-          <View style={styles.card}>
+          <Card>
             <Text style={styles.customerName}>{customer?.name}</Text>
             <Text style={styles.customerPhone}>{customer?.phone}</Text>
             <Text style={styles.customerPhone}>{customer?.email}</Text>
-          </View>
+          </Card>
         </View>
 
         {/* Order summary */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>ORDER SUMMARY</Text>
-          <View style={styles.card}>
+          <Card>
             {items.map((item) => {
               const lineBase  = item.product.selling_price * item.quantity;
               const tax       = lineBase * (item.product.tax_rate / 100);
@@ -251,7 +240,7 @@ export default function CheckoutScreen({ navigation }) {
                 </View>
               );
             })}
-          </View>
+          </Card>
         </View>
 
         {/* Payment method */}
@@ -277,7 +266,7 @@ export default function CheckoutScreen({ navigation }) {
         {/* Bill breakdown */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>BILL BREAKDOWN</Text>
-          <View style={styles.card}>
+          <Card>
             <View style={styles.billRow}>
               <Text style={styles.billLabel}>Items ({items.reduce((s, i) => s + i.quantity, 0)})</Text>
               <Text style={styles.billValue}>₹{subtotal.toFixed(2)}</Text>
@@ -290,7 +279,7 @@ export default function CheckoutScreen({ navigation }) {
               <Text style={styles.billTotalLabel}>Total Payable</Text>
               <Text style={styles.billTotalValue}>₹{grandTotal.toFixed(2)}</Text>
             </View>
-          </View>
+          </Card>
         </View>
 
         {errorMsg ? (
@@ -306,18 +295,11 @@ export default function CheckoutScreen({ navigation }) {
           <Text style={styles.payAmountLabel}>Pay Now</Text>
           <Text style={styles.payAmountValue}>₹{grandTotal.toFixed(2)}</Text>
         </View>
-        <TouchableOpacity
-          style={[styles.payBtn, loading && styles.payBtnLoading]}
+        <PrimaryButton
+          label={`Pay via ${payMethod}  ✓`}
           onPress={handleCheckout}
-          disabled={loading}
-          activeOpacity={0.85}
-        >
-          {loading ? (
-            <ActivityIndicator color={COLORS.bg} />
-          ) : (
-            <Text style={styles.payBtnText}>Pay via {payMethod}  ✓</Text>
-          )}
-        </TouchableOpacity>
+          loading={loading}
+        />
       </View>
     </View>
   );
@@ -343,13 +325,6 @@ const styles = StyleSheet.create({
   scroll:      { padding: 20, paddingBottom: 10 },
   section:     { marginBottom: 20 },
   sectionLabel:{ fontSize: 10, fontWeight: "700", color: COLORS.textMuted, letterSpacing: 2, marginBottom: 10 },
-  card: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 0.5,
-    borderColor: COLORS.border,
-  },
 
   customerName:  { fontSize: 17, fontWeight: "700", color: COLORS.text },
   customerPhone: { fontSize: 14, color: COLORS.textMuted, marginTop: 4 },
@@ -397,15 +372,6 @@ const styles = StyleSheet.create({
   payAmountRow:  { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   payAmountLabel:{ fontSize: 14, color: COLORS.textMuted },
   payAmountValue:{ fontSize: 22, fontWeight: "800", color: COLORS.accent },
-  payBtn: {
-    backgroundColor: COLORS.accent,
-    borderRadius: 16,
-    paddingVertical: 17,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  payBtnLoading: { opacity: 0.7 },
-  payBtnText:    { fontSize: 17, fontWeight: "700", color: COLORS.bg },
 
   // Receipt styles
   receiptContainer:  { flex: 1 },
@@ -445,11 +411,4 @@ const styles = StyleSheet.create({
   receiptGrandValue:{ fontSize: 18, fontWeight: "800", color: COLORS.accent },
   receiptFooter:    { textAlign: "center", fontSize: 13, fontWeight: "600", color: COLORS.text, padding: 16, paddingBottom: 4 },
   receiptFooterSub: { textAlign: "center", fontSize: 11, color: COLORS.textMuted, paddingBottom: 16 },
-  doneBtn: {
-    backgroundColor: COLORS.accent,
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: "center",
-  },
-  doneBtnText: { fontSize: 16, fontWeight: "700", color: COLORS.bg },
 });
